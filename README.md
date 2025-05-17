@@ -2,6 +2,21 @@
 
 This template should help get you started developing with Vue 3 in Vite.
 
+## Environment Variables
+
+The project uses OpenAI API for natural language processing. To set up the required environment variables:
+
+1. Create a `.env` file in the root directory
+2. Add your OpenAI API key:
+
+```
+VITE_OPENAI_API_KEY=your_openai_api_key_here
+```
+
+3. Restart the development server if it's already running
+
+Without valid API key, the application will use mock responses for development purposes.
+
 ## Recommended IDE Setup
 
 [VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
