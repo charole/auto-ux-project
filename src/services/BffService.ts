@@ -1,82 +1,11 @@
-// OpenAI API 연동을 위한 서비스
+// Backend API 연동을 위한 서비스
 export class BffService {
-  private apiKey: string
-  private apiEndpoint = 'https://api.openai.com/v1/chat/completions'
+  private apiBaseUrl: string
   private userProfile: Record<string, unknown> | null = null
-  private model = 'gpt-3.5-turbo' // 기본 모델 설정
-
-  // 웹사이트 구조 및 데이터 정보 (실제 데이터로 확장 필요)
-  private websiteStructure = {
-    pages: [
-      {
-        path: '/products',
-        title: '보험 상품',
-        description: '생명보험, 건강보험, 암보험, 자동차보험 등 다양한 보험 상품 정보',
-        keywords: ['보험', '상품', '생명', '건강', '암', '자동차', '보장', '보험료', '보험금'],
-      },
-      {
-        path: '/claim',
-        title: '보험금 청구',
-        description: '보험금 청구 방법, 필요 서류, 청구 절차 및 보험금 지급 과정',
-        keywords: ['청구', '보험금', '서류', '절차', '지급', '청구서', '신청'],
-      },
-      {
-        path: '/mypage',
-        title: '마이페이지',
-        description: '계약 정보, 청구 내역, 개인정보 관리 등 사용자 계정 관리',
-        keywords: ['계정', '내정보', '계약', '내역', '관리', '마이', '개인'],
-      },
-      {
-        path: '/consultation',
-        title: '상담 서비스',
-        description: '보험 관련 전문 상담사와의 상담 예약 및 문의',
-        keywords: ['상담', '문의', '질문', '예약', '전화', '상담사', '연락'],
-      },
-      {
-        path: '/faq',
-        title: '자주 묻는 질문',
-        description: '보험 가입, 청구, 상품 관련 자주 묻는 질문과 답변',
-        keywords: ['FAQ', '질문', '답변', '도움말', '자주', '문의'],
-      },
-    ],
-    products: [
-      {
-        id: 'life-insurance',
-        name: '생명보험',
-        description: '사망, 질병, 노후 등 다양한 위험에 대비하는 종합 생명보험 상품',
-        features: ['사망보험금', '질병보장', '노후연금', '저축기능'],
-      },
-      {
-        id: 'health-insurance',
-        name: '건강보험',
-        description: '입원, 수술, 진단비 등 다양한 의료 비용을 보장하는 건강보험 상품',
-        features: ['입원비', '수술비', '진단비', '통원치료비'],
-      },
-      {
-        id: 'cancer-insurance',
-        name: '암보험',
-        description: '암 진단, 치료, 수술 등 암 관련 비용을 특화하여 보장하는 상품',
-        features: ['암진단비', '암수술비', '항암치료비', '입원비'],
-      },
-      {
-        id: 'car-insurance',
-        name: '자동차보험',
-        description: '자동차 사고로 인한 피해와 책임을 보장하는 자동차 전용 보험',
-        features: ['대인배상', '대물배상', '자기신체사고', '자기차량손해'],
-      },
-    ],
-  }
 
   constructor() {
-    // 환경 변수에서 API 키 가져오기
-    this.apiKey = import.meta.env.VITE_OPENAI_API_KEY || ''
-
-    // API 키 확인
-    if (!this.apiKey) {
-      console.warn(
-        'OpenAI API key is not set in environment variables (VITE_OPENAI_API_KEY). Using mock responses instead.',
-      )
-    }
+    // Backend API URL 설정
+    this.apiBaseUrl = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000'
 
     // 로컬 스토리지에서 사용자 프로필 로드
     const storedProfile = localStorage.getItem('userProfile')
@@ -95,795 +24,765 @@ export class BffService {
     localStorage.setItem('userProfile', JSON.stringify(profile))
   }
 
-  // 사용자 질의에 대한 맞춤형 응답 생성
-  public async processUserQuery(query: string): Promise<BffResponse> {
+  // 동적 UI 생성 요청 - 백엔드 API와 매칭
+  public async generateDynamicUI(
+    pageType: string,
+    userId?: string,
+    productId?: string,
+    customRequirements?: string,
+  ): Promise<DynamicUIResponse> {
     try {
-      // API 키가 설정되지 않은 경우 개발용 응답 반환
-      if (!this.apiKey) {
-        console.warn('OpenAI API key not set. Using mock response.')
-        return this.generateMockResponse(query)
-      }
+      const params = new URLSearchParams({
+        page_type: pageType,
+        ...(userId && { user_id: userId }),
+        ...(productId && { product_id: productId }),
+        ...(customRequirements && { user_query: customRequirements }),
+      })
 
-      // OpenAI API 호출을 위한 메시지 준비
-      const messages = this.buildPrompt(query)
-
-      // OpenAI API 호출
-      const response = await fetch(this.apiEndpoint, {
-        method: 'POST',
+      // 🚀 스마트 AI Agent 엔드포인트 호출 (GET 방식)
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/ux/generate-ui?${params}`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
         },
-        body: JSON.stringify({
-          model: this.model,
-          messages: messages,
-          temperature: 0.7,
-        }),
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        console.error('OpenAI API Error:', errorData)
-
-        // 할당량 초과 오류 확인
-        if (errorData.error && errorData.error.code === 'insufficient_quota') {
-          throw new Error('OpenAI API 할당량이 초과되었습니다. 결제 정보를 확인해주세요.')
-        }
-
-        throw new Error(`OpenAI API 호출 중 오류 발생: ${response.status}`)
+        throw new Error(`스마트 API 호출 실패: ${response.status}`)
       }
 
-      const responseData = await response.json()
-      const aiResponse = responseData.choices[0].message.content.trim()
-
-      return this.parseAiResponse(aiResponse)
+      const data = await response.json()
+      console.log('🤖 BFF 스마트 AI 응답:', data.ai_generated ? 'AI Agent 활성' : '일반 모드')
+      return this.convertToUIResponse(data)
     } catch (error) {
-      console.error('Error processing user query:', error)
-      return {
-        answer: `죄송합니다, 요청을 처리하는 중 오류가 발생했습니다. ${error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.'}`,
-        recommendedPath: null,
-        confidence: 0,
-        contentType: 'error',
-        hasLinks: false,
-      }
+      console.error('🚀 스마트 Dynamic UI 생성 실패:', error)
+      return this.generateFallbackUI(pageType)
     }
   }
 
-  // 사용자 프로필과 질의를 포함한 프롬프트 생성
-  private buildPrompt(query: string): Array<{ role: string; content: string }> {
-    const messages = [
-      {
-        role: 'system',
-        content: `당신은 SecureLife 보험회사의 AI 어시스턴트입니다. 사용자의 질문에 친절하게 답변해주고, 
-                관련 페이지를 추천해주는 역할을 합니다.
-                
-                SecureLife 웹사이트 구조와 데이터:
-                ${JSON.stringify(this.websiteStructure, null, 2)}
-                
-                응답은 반드시 다음 JSON 형식으로 반환해주세요:
-                {
-                  "answer": "사용자 질문에 대한 답변",
-                  "recommendedPath": "추천 경로 (/products, /claim 등) 또는 null",
-                  "confidence": 추천 신뢰도 (0-1 사이 숫자),
-                  "contentType": "응답 유형 (text, json, html, error 중 하나)",
-                  "uiSuggestions": {
-                    "fontSize": "표준 | 크게 | 매우 크게",
-                    "contrast": "표준 | 높음",
-                    "simplicity": "표준 | 높음",
-                    "interactionMethod": "표준 | 간편함"
-                  }
-                }
-                
-                가능한 recommendedPath:
-                - /products : 보험 상품 관련 질문
-                - /claim : 보험금 청구 관련 질문
-                - /mypage : 사용자 정보 관련 질문
-                - /consultation : 상담 관련 질문
-                - /faq : 자주 묻는 질문
-                - null : 명확한 경로가 없는 경우
-
-                마크다운 링크 사용 지침:
-                - 응답 내용에 관련 페이지를 언급할 때는 반드시 마크다운 링크 형식을 사용하세요: [링크텍스트](/경로)
-                - 예시: "보험금 청구는 [청구 페이지](/claim)에서 가능합니다."
-                - 모든 링크는 반드시 웹사이트 구조에 정의된 유효한 경로여야 합니다.
-                
-                UI/UX 개인화 지침:
-                1. 고령 사용자(65세 이상) 또는 디지털 역량이 낮은 사용자:
-                   - 큰 글자 크기 사용 ("크게" 또는 "매우 크게")
-                   - 높은 대비 사용 ("높음")
-                   - 간단한 UI 사용 ("높음")
-                   - 명확한 상호작용 방식 제공 ("간편함")
-                   - 링크에는 "클릭하세요", "여기를 누르세요" 같은 명확한 액션 텍스트 사용
-                   - 가능한 한 많은 정보를 명시적으로 제공
-                
-                2. 일반 사용자(성인):
-                   - 표준 글자 크기
-                   - 보통 수준의 UI 복잡성
-                   - 링크는 컨텍스트에 맞게 자연스럽게 배치
-                
-                3. 디지털 역량이 높은 사용자:
-                   - 간결한 응답
-                   - 전문 용어 사용 가능
-                   - 효율적인 정보 전달
-                
-                응답 시 다음 요소를 항상 고려하여 개인화하세요:
-                1. 사용자의 연령
-                2. 디지털 역량 수준
-                3. UI 선호도
-                4. 이전 상호작용 패턴
-                5. 특별한 요구사항(시각적 제약 등)
-                
-                링크 처리 우선순위:
-                1. 사용자가 언급한 주제와 가장 관련있는 페이지 링크 제공
-                2. 질문에서 언급하지 않았더라도 관련성 높은 추가 페이지 링크 제공
-                3. 관련 상품 또는 서비스에 대한 링크 제공
-                
-                중요: 모든 응답은 사용자의 특성과 선호도에 최적화되어야 합니다. 사용자가 편안하고 효율적으로 정보를 얻을 수 있도록 하세요.`,
-      },
-    ]
-
-    // 사용자 프로필이 있는 경우 컨텍스트에 추가 및 프로필 기반 맞춤 지침 생성
-    if (this.userProfile) {
-      // 기본 프로필 정보 추가
-      messages.push({
-        role: 'system',
-        content: `사용자 정보: ${JSON.stringify(this.userProfile)}`,
-      })
-
-      // 사용자 특성에 따른 맞춤형 지침 생성
-      const age = this.userProfile.age as number | undefined
-      const digitalProficiency = this.userProfile.digitalProficiency as string | undefined
-      const preferences = this.userProfile.preferences as Record<string, string> | undefined
-
-      let personalizedInstructions = '사용자 맞춤 지침:\n'
-
-      if (age !== undefined) {
-        if (age >= 65) {
-          personalizedInstructions +=
-            '- 고령 사용자입니다. 명확하고 간단한 언어를 사용하고, 큰 글자와 명확한 액션을 제안하세요.\n'
-          personalizedInstructions +=
-            '- 링크는 "여기를 클릭하세요"와 같이 명확하게 표시하고 버튼 형태로 제공하는 것이 좋습니다.\n'
-        } else if (age <= 30) {
-          personalizedInstructions +=
-            '- 젊은 사용자입니다. 간결하고 직관적인 정보 제공이 효과적입니다.\n'
-        }
-      }
-
-      if (digitalProficiency) {
-        if (digitalProficiency === 'low') {
-          personalizedInstructions +=
-            '- 디지털 역량이 낮은 사용자입니다. 기술 용어를 피하고 단계별 안내를 제공하세요.\n'
-          personalizedInstructions +=
-            '- 모든 액션은 명시적으로 설명하고, 여러 선택지보다는 명확한 하나의 경로를 제안하세요.\n'
-        } else if (digitalProficiency === 'high') {
-          personalizedInstructions +=
-            '- 디지털 역량이 높은 사용자입니다. 효율적인 정보와 고급 옵션도 함께 제공할 수 있습니다.\n'
-        }
-      }
-
-      if (preferences) {
-        if (preferences.fontSize) {
-          personalizedInstructions += `- 사용자가 선호하는 글자 크기: ${preferences.fontSize}\n`
-        }
-        if (preferences.contrast) {
-          personalizedInstructions += `- 사용자가 선호하는 대비 수준: ${preferences.contrast}\n`
-        }
-        if (preferences.interactionMethod) {
-          personalizedInstructions += `- 사용자가 선호하는 상호작용 방식: ${preferences.interactionMethod}\n`
-        }
-      }
-
-      // 맞춤형 지침 추가
-      messages.push({
-        role: 'system',
-        content: personalizedInstructions,
-      })
-    }
-
-    // 사용자 질의 추가
-    messages.push({
-      role: 'user',
-      content: query,
-    })
-
-    return messages
-  }
-
-  // AI 응답을 파싱하여 구조화된 응답으로 변환
-  private parseAiResponse(aiResponse: string): BffResponse {
+  // 보험 상품 목록 조회 - 백엔드 API와 매칭
+  public async getInsuranceProducts(
+    category?: string,
+    limit: number = 20,
+  ): Promise<APIResponse<Product[]>> {
     try {
-      // JSON 문자열을 객체로 파싱
-      let jsonResponse
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        ...(category && { category }),
+      })
 
-      // JSON 형식을 추출하기 위한 정규 표현식 패턴
-      const jsonPattern = /\{[\s\S]*\}/
-      const match = aiResponse.match(jsonPattern)
+      // 백엔드 실제 엔드포인트: /api/v1/ux/products
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/ux/products?${params}`)
 
-      if (match) {
-        jsonResponse = JSON.parse(match[0])
-      } else {
-        throw new Error('JSON 형식을 찾을 수 없습니다')
+      if (!response.ok) {
+        throw new Error(`상품 조회 실패: ${response.status}`)
       }
 
-      // 마크다운 링크가 포함되어 있는지 확인하고 처리
-      let answer = jsonResponse.answer || '응답을 처리할 수 없습니다.'
-
-      // 응답에서 유효한 내부 경로 링크 확인 및 처리
-      answer = this.processMarkdownLinks(answer)
-
-      // UI 제안이 포함되어 있지 않은 경우 사용자 프로필 기반으로 기본 UI 설정
-      let uiSuggestions = jsonResponse.uiSuggestions
-
-      if (!uiSuggestions && this.userProfile) {
-        uiSuggestions = this.generateUISuggestionsFromProfile(this.userProfile)
-      } else if (!uiSuggestions) {
-        uiSuggestions = {
-          fontSize: '표준',
-          contrast: '표준',
-          simplicity: '표준',
-          interactionMethod: '표준',
-        }
-      }
-
+      return await response.json()
+    } catch (error) {
+      console.error('보험 상품 조회 실패:', error)
       return {
-        answer: answer,
-        recommendedPath: jsonResponse.recommendedPath || null,
-        confidence: jsonResponse.confidence || 0,
-        contentType: jsonResponse.contentType || 'text',
-        uiSuggestions: uiSuggestions,
-        hasLinks: this.containsMarkdownLinks(answer),
+        success: false,
+        data: [],
+        error: error instanceof Error ? error.message : '알 수 없는 오류',
       }
-    } catch (e) {
-      // JSON 파싱 실패 시 원본 텍스트 반환
-      console.error('Failed to parse AI response as JSON', e)
+    }
+  }
 
-      // 마크다운 링크가 포함되어 있는지 확인하고 처리
-      const processedResponse = this.processMarkdownLinks(aiResponse)
+  // 보험 카테고리 조회 - 백엔드 API와 매칭
+  public async getInsuranceCategories(): Promise<APIResponse<Category[]>> {
+    try {
+      // 백엔드 실제 엔드포인트: /api/v1/ux/categories
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/ux/categories`)
 
-      // 기본 UI 제안 생성
-      const uiSuggestions = this.userProfile
-        ? this.generateUISuggestionsFromProfile(this.userProfile)
-        : {
-            fontSize: '표준',
-            contrast: '표준',
-            simplicity: '표준',
-            interactionMethod: '표준',
-          }
+      if (!response.ok) {
+        throw new Error(`카테고리 조회 실패: ${response.status}`)
+      }
 
+      return await response.json()
+    } catch (error) {
+      console.error('보험 카테고리 조회 실패:', error)
       return {
-        answer: processedResponse,
-        recommendedPath: null,
-        confidence: 0,
-        contentType: 'text',
-        uiSuggestions: uiSuggestions,
-        hasLinks: this.containsMarkdownLinks(processedResponse),
+        success: false,
+        data: [],
+        error: error instanceof Error ? error.message : '알 수 없는 오류',
       }
     }
   }
 
-  // 사용자 프로필 기반으로 UI 제안 생성
-  private generateUISuggestionsFromProfile(profile: Record<string, unknown>): {
-    fontSize: string
-    contrast: string
-    simplicity: string
-    interactionMethod: string
-  } {
-    const age = profile.age as number | undefined
-    const digitalProficiency = profile.digitalProficiency as string | undefined
-    const preferences = profile.preferences as Record<string, string> | undefined
-
-    // 기본값 설정
-    let fontSize = '표준'
-    let contrast = '표준'
-    let simplicity = '표준'
-    let interactionMethod = '표준'
-
-    // 사용자가 선호도를 명시적으로 설정한 경우 먼저 적용
-    if (preferences) {
-      if (preferences.fontSize) fontSize = preferences.fontSize
-      if (preferences.contrast) contrast = preferences.contrast
-      if (preferences.simplicity) simplicity = preferences.simplicity
-      if (preferences.interactionMethod) interactionMethod = preferences.interactionMethod
-    }
-
-    // 명시적 설정이 없는 경우 사용자 특성에 따라 자동 설정
-    if (age !== undefined) {
-      // 고령 사용자
-      if (age >= 65) {
-        if (fontSize === '표준') fontSize = '크게'
-        if (contrast === '표준') contrast = '높음'
-        if (simplicity === '표준') simplicity = '높음'
-        if (interactionMethod === '표준') interactionMethod = '간편함'
-      }
-    }
-
-    if (digitalProficiency) {
-      // 디지털 역량이 낮은 사용자
-      if (digitalProficiency === 'low') {
-        if (simplicity === '표준') simplicity = '높음'
-        if (interactionMethod === '표준') interactionMethod = '간편함'
-      }
-    }
-
-    return {
-      fontSize,
-      contrast,
-      simplicity,
-      interactionMethod,
-    }
-  }
-
-  // 문자열에 마크다운 링크가 포함되어 있는지 확인
-  private containsMarkdownLinks(text: string): boolean {
-    const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/
-    return linkPattern.test(text)
-  }
-
-  // 링크 텍스트를 사용자 특성에 맞게 강화해야 하는지 확인
-  private shouldEnhanceLinkText(linkText: string): boolean {
-    // 1. 사용자 프로필 기반 확인
-    if (this.userProfile) {
-      const age = this.userProfile.age as number
-      const proficiency = this.userProfile.digitalProficiency as string
-
-      // 고령 사용자(65세 이상) 또는 디지털 역량이 낮은 사용자에게 더 명확한 링크 텍스트 제공
-      if ((age && age >= 65) || proficiency === 'low') {
-        return true
-      }
-
-      // 사용자 링크 표시 선호도
-      if (
-        this.userProfile.preferences &&
-        typeof this.userProfile.preferences === 'object' &&
-        'interactionMethod' in this.userProfile.preferences &&
-        this.userProfile.preferences.interactionMethod === '간편함'
-      ) {
-        return true
-      }
-    }
-
-    // 2. 링크 텍스트 길이 확인 (너무 짧은 텍스트는 강화 필요)
-    if (linkText.length < 5) {
-      return true
-    }
-
-    // 3. 행동 유도 문구가 이미 포함되어 있는지 확인
-    if (this.hasCallToAction(linkText)) {
+  // 헬스체크 - 백엔드 API와 매칭
+  public async healthCheck(): Promise<boolean> {
+    try {
+      // 백엔드 실제 엔드포인트: /api/v1/ux/health
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/ux/health`)
+      const data = await response.json()
+      return data.status === 'healthy'
+    } catch (error) {
+      console.error('헬스체크 실패:', error)
       return false
     }
-
-    // 기본적으로 고령 사용자나 디지털 역량이 낮은 사용자가 아니면 강화하지 않음
-    return false
   }
 
-  // HTML 응답에서 마크다운 링크 처리를 개선한 메서드
-  private enhanceHtmlWithLinks(html: string): string {
-    // 마크다운 링크 패턴
-    const markdownLinkPattern = /\[([^\]]+)\]\(([^)]+)\)/g
+  // 통합 검색 기능 - 새로운 백엔드 검색 API 활용
+  public async searchContent(
+    query: string,
+    limit: number = 20,
+    includeProducts: boolean = true,
+    includeFaqs: boolean = true,
+    includeTestimonials: boolean = true,
+  ): Promise<APIResponse<SearchResults>> {
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        limit: limit.toString(),
+        include_products: includeProducts.toString(),
+        include_faqs: includeFaqs.toString(),
+        include_testimonials: includeTestimonials.toString(),
+      })
 
-    // HTML에 마크다운 링크가 포함되어 있는지 확인하고 변환
-    if (markdownLinkPattern.test(html)) {
-      return this.convertMarkdownLinksToHtml(html)
-    }
+      // 백엔드 실제 엔드포인트: /api/v1/ux/search
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/ux/search?${params}`)
 
-    return html
-  }
-
-  // AI 응답 처리 최적화 - 링크와 HTML 내용을 모두 처리
-  public enhanceAIResponse(response: BffResponse): BffResponse {
-    // 응답이 없는 경우 기본값 반환
-    if (!response) return response
-
-    // 응답 타입에 따라 처리
-    switch (response.contentType) {
-      case 'html':
-        response.answer = this.enhanceHtmlWithLinks(response.answer)
-        break
-      case 'text':
-      default:
-        response.answer = this.processMarkdownLinks(response.answer)
-        break
-    }
-
-    // 링크 포함 여부 갱신
-    response.hasLinks = this.containsMarkdownLinks(response.answer)
-
-    return response
-  }
-
-  // 마크다운 링크를 처리하고 유효한 경로인지 확인
-  private processMarkdownLinks(text: string): string {
-    // 마크다운 링크 패턴: [링크텍스트](URL)
-    const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g
-
-    // 웹사이트 경로 목록
-    const validPaths = this.websiteStructure.pages.map((page) => page.path)
-
-    return text.replace(linkPattern, (match, linkText, url) => {
-      // 외부 링크 (http://, https://)
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        return match // 변경 없음
+      if (!response.ok) {
+        throw new Error(`검색 실패: ${response.status}`)
       }
 
-      // 내부 경로 검증
-      if (url.startsWith('/')) {
-        const path = url.split('?')[0] // 쿼리 파라미터 제거
+      const data = await response.json()
+      return {
+        success: data.success,
+        data: data.data,
+        total: data.total_results,
+        error: data.success ? undefined : '검색 중 오류가 발생했습니다.',
+      }
+    } catch (error) {
+      console.error('검색 실패:', error)
+      return {
+        success: false,
+        data: {
+          products: [],
+          faqs: [],
+          testimonials: [],
+        },
+        error: error instanceof Error ? error.message : '검색 중 오류가 발생했습니다.',
+      }
+    }
+  }
 
-        // 유효한 경로인지 확인
-        if (validPaths.includes(path)) {
-          // 사용자 특성에 따라 링크 텍스트 강화
-          if (this.shouldEnhanceLinkText(linkText)) {
-            // 링크 텍스트가 이미 행동 유도 문구를 포함하고 있는지 확인
-            if (!this.hasCallToAction(linkText)) {
-              // 행동 유도 문구 추가
-              linkText = this.enhanceLinkText(linkText, path)
-            }
-          }
-          return `[${linkText}](${path})`
-        } else {
-          // 유사한 경로 찾기
-          const similarPath = this.findSimilarPath(path)
-          if (similarPath) {
-            // 사용자 특성에 따라 링크 텍스트 강화
-            if (this.shouldEnhanceLinkText(linkText)) {
-              // 링크 텍스트가 이미 행동 유도 문구를 포함하고 있는지 확인
-              if (!this.hasCallToAction(linkText)) {
-                // 행동 유도 문구 추가
-                linkText = this.enhanceLinkText(linkText, similarPath)
-              }
-            }
-            return `[${linkText}](${similarPath})` // 유사한 경로로 수정
-          }
+  // FAQ 목록 조회 - 백엔드 API와 매칭
+  public async getFAQs(category?: string): Promise<APIResponse<FAQ[]>> {
+    try {
+      const params = new URLSearchParams()
+      if (category) {
+        params.append('category', category)
+      }
+
+      // 백엔드 실제 엔드포인트: /api/v1/ux/faqs
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/ux/faqs?${params}`)
+
+      if (!response.ok) {
+        throw new Error(`FAQ 조회 실패: ${response.status}`)
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('FAQ 조회 실패:', error)
+      return {
+        success: false,
+        data: [],
+        error: error instanceof Error ? error.message : 'FAQ 조회 중 오류가 발생했습니다.',
+      }
+    }
+  }
+
+  // 고객 후기 조회 - 백엔드 API와 매칭
+  public async getCustomerTestimonials(
+    productId?: string,
+    limit: number = 20,
+  ): Promise<APIResponse<Testimonial[]>> {
+    try {
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+      })
+
+      if (productId) {
+        params.append('product_id', productId)
+      }
+
+      // 백엔드 실제 엔드포인트: /api/v1/ux/testimonials
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/ux/testimonials?${params}`)
+
+      if (!response.ok) {
+        throw new Error(`고객 후기 조회 실패: ${response.status}`)
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('고객 후기 조회 실패:', error)
+      return {
+        success: false,
+        data: [],
+        error: error instanceof Error ? error.message : '고객 후기 조회 중 오류가 발생했습니다.',
+      }
+    }
+  }
+
+  // 사용자 보험 가입 정보 조회 (미구현 - 백엔드에 엔드포인트 없음)
+  public async getUserPolicies(userId: string): Promise<APIResponse<Policy[]>> {
+    console.warn('getUserPolicies: 백엔드에 해당 엔드포인트가 없습니다.')
+    return {
+      success: false,
+      data: [],
+      error: '해당 기능은 아직 구현되지 않았습니다.',
+    }
+  }
+
+  // 사용자 청구 내역 조회 (미구현 - 백엔드에 엔드포인트 없음)
+  public async getUserClaims(userId: string): Promise<APIResponse<Claim[]>> {
+    console.warn('getUserClaims: 백엔드에 해당 엔드포인트가 없습니다.')
+    return {
+      success: false,
+      data: [],
+      error: '해당 기능은 아직 구현되지 않았습니다.',
+    }
+  }
+
+  // 레거시 호환성을 위한 메서드 - 검색 결과로 응답 생성
+  public async processUserQuery(query: string): Promise<BffResponse> {
+    try {
+      // 새로운 검색 API를 사용하여 결과 생성
+      const searchResults = await this.searchContent(query, 10, true, true, true)
+
+      if (!searchResults.success) {
+        throw new Error(searchResults.error || '검색 실패')
+      }
+
+      // 검색 결과를 BffResponse 형식으로 변환
+      const answer = this.generateAnswerFromSearchResults(query, searchResults.data)
+      const recommendedPath = this.getRecommendedPathFromSearchResults(searchResults.data)
+
+      return {
+        answer,
+        recommendedPath,
+        confidence: this.calculateSearchConfidence(searchResults.data),
+        contentType: 'search_results',
+        hasLinks: true,
+        components: this.generateComponentsFromSearchResults(searchResults.data),
+        searchResults: searchResults.data,
+      }
+    } catch (error) {
+      console.error('Query 처리 실패:', error)
+
+      // 기존 방식으로 폴백
+      try {
+        const pageType = this.inferPageTypeFromQuery(query)
+        const result = await this.generateDynamicUI(pageType, undefined, undefined, query)
+
+        return {
+          answer: this.generateAnswerFromComponents(result.components),
+          recommendedPath: this.getRecommendedPathFromPageType(pageType),
+          confidence: 0.6,
+          contentType: 'dynamic_ui',
+          hasLinks: true,
+          components: result.components,
+        }
+      } catch (fallbackError) {
+        return {
+          answer: `죄송합니다, 요청을 처리하는 중 오류가 발생했습니다. ${error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.'}`,
+          recommendedPath: null,
+          confidence: 0,
+          contentType: 'error',
+          hasLinks: false,
+          components: [],
         }
       }
-
-      // 기본 반환 (유효하지 않은 경로는 홈으로 설정)
-      return `[${linkText}](/)`
-    })
-  }
-
-  // 링크 텍스트가 이미 행동 유도 문구를 포함하고 있는지 확인
-  private hasCallToAction(linkText: string): boolean {
-    const callToActionPhrases = [
-      '클릭',
-      '누르',
-      '여기',
-      '방문',
-      '확인',
-      '이동',
-      '보기',
-      '바로가기',
-      '링크',
-    ]
-    const lowercaseText = linkText.toLowerCase()
-    return callToActionPhrases.some((phrase) => lowercaseText.includes(phrase))
-  }
-
-  // 사용자 특성에 따라 링크 텍스트 강화
-  private enhanceLinkText(linkText: string, path: string): string {
-    // 페이지 타입에 따라 적절한 액션 문구 선택
-    let actionText = '확인하기'
-
-    // 페이지 경로에 따라 액션 문구 맞춤화
-    if (path.includes('products')) {
-      actionText = '상품 보기'
-    } else if (path.includes('claim')) {
-      actionText = '청구 방법 확인하기'
-    } else if (path.includes('mypage')) {
-      actionText = '내 정보 확인하기'
-    } else if (path.includes('consultation')) {
-      actionText = '상담 신청하기'
-    } else if (path.includes('faq')) {
-      actionText = 'FAQ 보기'
-    }
-
-    // 기존 링크 텍스트가 짧으면 완전히 대체, 길면 추가
-    if (linkText.length < 10) {
-      return `${linkText} ${actionText}`
-    } else {
-      return `${linkText} (${actionText})`
     }
   }
 
-  // 유사한 경로 찾기
-  private findSimilarPath(path: string): string | null {
-    const normalizedPath = path.toLowerCase()
+  // 검색 결과로부터 답변 생성
+  private generateAnswerFromSearchResults(query: string, results: SearchResults): string {
+    const { products, faqs, testimonials } = results
+    const totalResults = products.length + faqs.length + testimonials.length
 
-    // 1. 정확한 경로 매치 시도
-    for (const page of this.websiteStructure.pages) {
-      if (page.path.toLowerCase() === normalizedPath) {
-        return page.path
-      }
+    if (totalResults === 0) {
+      return `'${query}'에 대한 검색 결과를 찾을 수 없습니다. 다른 검색어를 시도해보세요.`
     }
 
-    // 2. 경로 세그먼트 기반 키워드 매칭
-    const pathSegments = normalizedPath.split('/').filter(Boolean)
-    for (const segment of pathSegments) {
-      if (!segment) continue
+    let answer = `'${query}'에 대한 검색 결과입니다.\n\n`
 
-      // 키워드 일치 검색
-      for (const page of this.websiteStructure.pages) {
-        const keywordMatch = page.keywords.some(
-          (kw) => kw.toLowerCase().includes(segment) || segment.includes(kw.toLowerCase()),
-        )
-        if (keywordMatch) {
-          return page.path
-        }
-      }
+    // 보험 상품 결과
+    if (products.length > 0) {
+      answer += `**관련 보험 상품 (${products.length}개)**\n`
+      products.slice(0, 3).forEach((product, index) => {
+        answer += `${index + 1}. **${product.name}**\n`
+        answer += `   ${product.description}\n`
+        answer += `   보험료: ${product.base_price?.toLocaleString()}원/월\n\n`
+      })
     }
 
-    // 3. 전체 페이지 제목과 설명에서 유사성 검색
-    for (const page of this.websiteStructure.pages) {
-      const titleMatch =
-        page.title.toLowerCase().includes(normalizedPath) ||
-        normalizedPath.includes(page.title.toLowerCase())
-      const descMatch =
-        page.description.toLowerCase().includes(normalizedPath) ||
-        normalizedPath.includes(page.description.toLowerCase())
-
-      if (titleMatch || descMatch) {
-        return page.path
-      }
+    // FAQ 결과
+    if (faqs.length > 0) {
+      answer += `**관련 FAQ (${faqs.length}개)**\n`
+      faqs.slice(0, 2).forEach((faq, index) => {
+        answer += `${index + 1}. **${faq.question}**\n`
+        answer += `   ${faq.answer.substring(0, 100)}...\n\n`
+      })
     }
 
-    // 4. 제품 데이터 검색
-    for (const product of this.websiteStructure.products) {
-      if (
-        product.name.toLowerCase().includes(normalizedPath) ||
-        normalizedPath.includes(product.name.toLowerCase()) ||
-        product.description.toLowerCase().includes(normalizedPath)
-      ) {
-        return '/products' // 상품 관련 경로로 연결
-      }
+    // 고객 후기 결과
+    if (testimonials.length > 0) {
+      answer += `**고객 후기 (${testimonials.length}개)**\n`
+      testimonials.slice(0, 2).forEach((testimonial, index) => {
+        answer += `${index + 1}. **${testimonial.title}** (⭐${testimonial.rating}/5)\n`
+        answer += `   ${testimonial.content.substring(0, 80)}...\n\n`
+      })
     }
 
-    // 일치하는 항목이 없는 경우
+    return answer
+  }
+
+  // 검색 결과로부터 추천 경로 생성
+  private getRecommendedPathFromSearchResults(results: SearchResults): string | null {
+    const { products, faqs } = results
+
+    if (products.length > 0) {
+      return '/products'
+    }
+
+    if (faqs.length > 0) {
+      return '/faq'
+    }
+
     return null
   }
 
-  // 개발용 모의 응답 생성 (API 키가 없을 때 사용)
-  private generateMockResponse(query: string): BffResponse {
-    const lowerQuery = query.toLowerCase()
+  // 검색 신뢰도 계산
+  private calculateSearchConfidence(results: SearchResults): number {
+    const totalResults = results.products.length + results.faqs.length + results.testimonials.length
 
-    // 질의에 따른 모의 응답
-    if (lowerQuery.includes('보험') && lowerQuery.includes('상품')) {
-      return {
-        answer:
-          '저희 SecureLife에서는 다양한 보험 상품을 제공하고 있습니다. 생명보험, 건강보험, 자동차보험 등 고객님의 필요에 맞는 다양한 상품을 확인해보세요.',
-        recommendedPath: '/products',
-        confidence: 0.9,
-        contentType: 'text',
-        hasLinks: false,
-      }
-    } else if (lowerQuery.includes('청구') || lowerQuery.includes('보험금')) {
-      return {
-        answer:
-          '보험금 청구는 온라인으로 간편하게 하실 수 있습니다. 필요한 서류를 준비하시고 [청구 페이지](/claim)를 방문해 주세요.',
-        recommendedPath: '/claim',
-        confidence: 0.85,
-        contentType: 'text',
-        hasLinks: true,
-      }
-    } else if (lowerQuery.includes('마이페이지') || lowerQuery.includes('내 정보')) {
-      return {
-        answer: '마이페이지에서 계약 정보, 청구 내역, 개인정보 등을 확인하실 수 있습니다.',
-        recommendedPath: '/mypage',
-        confidence: 0.8,
-        contentType: 'text',
-        hasLinks: false,
-      }
-    } else if (lowerQuery.includes('상담') || lowerQuery.includes('문의')) {
-      return {
-        answer:
-          '상담 페이지에서 전문 상담사와 연결되어 궁금한 점을 해결하실 수 있습니다. [여기를 클릭하세요](/consultation).',
-        recommendedPath: '/consultation',
-        confidence: 0.75,
-        contentType: 'text',
-        hasLinks: true,
-      }
-    } else if (lowerQuery.includes('faq') || lowerQuery.includes('자주 묻는 질문')) {
-      return {
-        answer: 'FAQ 페이지에서 자주 묻는 질문과 답변을 확인하실 수 있습니다. [FAQ 바로가기](/faq)',
-        recommendedPath: '/faq',
-        confidence: 0.7,
-        contentType: 'text',
-        hasLinks: true,
-      }
-    } else {
-      // 맞춤형 응답 (사용자 프로필 활용)
-      if (this.userProfile && typeof this.userProfile.name === 'string') {
-        return {
-          answer: `${this.userProfile.name}님, 보험 관련하여 무엇을 도와드릴까요? 질문을 더 구체적으로 해주시면 더 정확한 답변을 드릴 수 있습니다.`,
-          recommendedPath: null,
-          confidence: 0.3,
-          contentType: 'text',
-          hasLinks: false,
-        }
-      }
+    if (totalResults === 0) return 0
+    if (totalResults >= 5) return 0.9
+    if (totalResults >= 3) return 0.7
+    if (totalResults >= 1) return 0.5
 
-      // 기본 응답
-      return {
-        answer:
-          '구체적인 질문을 해주시면 더 정확한 답변을 드릴 수 있습니다. 예를 들어, "보험 상품 추천해줘", "보험금 청구하는 방법 알려줘" 등의 질문을 해보세요.',
-        recommendedPath: null,
-        confidence: 0.2,
-        contentType: 'text',
-        hasLinks: false,
-      }
-    }
+    return 0.3
   }
 
-  // 사용자 질문에 맞는 HTML 마크업 생성
-  public async generateContentMarkup(query: string): Promise<string> {
+  // 검색 결과로부터 UI 컴포넌트 생성
+  private generateComponentsFromSearchResults(results: SearchResults): UIComponent[] {
+    const components: UIComponent[] = []
+
+    // 상품 결과 컴포넌트
+    if (results.products.length > 0) {
+      components.push({
+        type: 'product_list',
+        id: 'search_products',
+        title: `관련 보험 상품 (${results.products.length}개)`,
+        content: '검색어와 관련된 보험 상품들입니다.',
+        data: { products: results.products.slice(0, 6) },
+        style:
+          'background: #f8f9ff; padding: 1.5rem; border-radius: 12px; border-left: 4px solid #4f46e5;',
+        priority: 1,
+      })
+    }
+
+    // FAQ 결과 컴포넌트
+    if (results.faqs.length > 0) {
+      components.push({
+        type: 'faq_list',
+        id: 'search_faqs',
+        title: `관련 FAQ (${results.faqs.length}개)`,
+        content: '자주 묻는 질문들을 확인해보세요.',
+        data: { faqs: results.faqs.slice(0, 5) },
+        style:
+          'background: #f0f9ff; padding: 1.5rem; border-radius: 12px; border-left: 4px solid #0ea5e9;',
+        priority: 2,
+      })
+    }
+
+    // 후기 결과 컴포넌트
+    if (results.testimonials.length > 0) {
+      components.push({
+        type: 'testimonial_list',
+        id: 'search_testimonials',
+        title: `고객 후기 (${results.testimonials.length}개)`,
+        content: '실제 고객들의 생생한 후기를 확인해보세요.',
+        data: { testimonials: results.testimonials.slice(0, 4) },
+        style:
+          'background: #f0fdf4; padding: 1.5rem; border-radius: 12px; border-left: 4px solid #10b981;',
+        priority: 3,
+      })
+    }
+
+    return components
+  }
+
+  // AI 응답 개선 메서드 (SearchResultView.vue에서 사용)
+  public enhanceAIResponse(response: BffResponse): BffResponse {
     try {
-      // API 키가 설정되지 않은 경우 개발용 응답 반환
-      if (!this.apiKey) {
-        console.warn('OpenAI API key not set in environment variables. Using mock HTML response.')
-        return this.generateMockHtml(query)
+      // 응답 개선 로직
+      const enhancedAnswer = this.enhanceAnswerText(response.answer)
+      const enhancedComponents =
+        response.components?.map((comp) => this.enhanceComponent(comp)) || []
+
+      return {
+        ...response,
+        answer: enhancedAnswer,
+        components: enhancedComponents,
+        hasLinks: this.detectLinks(enhancedAnswer),
+        uiSuggestions: this.generateUIEnhancements(response),
       }
-
-      // HTML 생성을 위한 프롬프트 구성
-      const messages = [
-        {
-          role: 'system',
-          content: `당신은 SecureLife 보험회사의 AI 어시스턴트입니다.
-                  사용자가 요청한 보험 상품이나 서비스에 대한 정보를 HTML 형식으로 생성해주세요.
-                  응답은 반드시 <div class="custom-content">으로 시작하여 </div>로 끝나야 합니다.
-                  디자인은 clean하고 modern하게 작성해주세요.
-                  제목(h2), 설명(p), 특징이나 혜택(ul), 그리고 액션 버튼(div class="action-buttons")을 포함해주세요.
-                  버튼은 관련 페이지로 이동하는 링크를 제공해야 합니다(예: /products, /claim, /consultation 등).
-                  
-                  내부 페이지 링크를 제공할 때는 <a href="/경로">링크텍스트</a> 형식을 사용하세요.
-                  모든 링크는 적절한 클래스를 포함해야 합니다: class="adaptive-link"`,
-        },
-      ]
-
-      // 사용자 프로필이 있는 경우 추가
-      if (this.userProfile) {
-        messages.push({
-          role: 'system',
-          content: `사용자 정보: ${JSON.stringify(this.userProfile)}`,
-        })
-      }
-
-      // 사용자 질의 추가
-      messages.push({
-        role: 'user',
-        content: `다음에 대한 정보 페이지를 HTML로 만들어주세요: ${query}`,
-      })
-
-      // OpenAI API 호출
-      const response = await fetch(this.apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: messages,
-          temperature: 0.7,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error('OpenAI API Error:', errorData)
-        throw new Error(`OpenAI API 호출 중 오류 발생: ${response.status}`)
-      }
-
-      const responseData = await response.json()
-      const htmlContent = responseData.choices[0].message.content.trim()
-
-      // HTML 내용 추출
-      const htmlMatch = htmlContent.match(/<div class="custom-content">[\s\S]*?<\/div>/i)
-      if (htmlMatch) {
-        // 마크다운 링크가 포함되어 있을 수 있으므로 이를 HTML 링크로 변환
-        const html = htmlMatch[0]
-        const processedHtml = this.convertMarkdownLinksToHtml(html)
-        return processedHtml
-      }
-
-      // 마크다운 링크가 포함되어 있을 수 있으므로 변환 처리
-      return this.convertMarkdownLinksToHtml(htmlContent)
     } catch (error) {
-      console.error('Error generating HTML content:', error)
-      return this.generateMockHtml(query)
+      console.error('AI 응답 개선 실패:', error)
+      return response // 원본 응답 반환
     }
   }
 
-  // 모의 HTML 콘텐츠 생성 (API 호출 실패 시)
-  private generateMockHtml(query: string): string {
-    const lowerQuery = query.toLowerCase()
+  // 답변 텍스트 개선
+  private enhanceAnswerText(answer: string): string {
+    if (!answer) return answer
 
-    let mockHtml = ''
+    let enhanced = answer
 
-    if (lowerQuery.includes('암보험')) {
-      mockHtml = `
-        <div class="custom-content">
-          <h2>암보험 안내</h2>
-          <p>SecureLife의 암보험 상품은 암 진단 시 최대 1억원까지 보장됩니다.</p>
-          <ul>
-            <li>진단비 최대 1억원</li>
-            <li>입원비 일당 최대 10만원</li>
-            <li>수술비 300만원~1000만원</li>
-          </ul>
-          <div class="action-buttons">
-            <a href="/products" class="adaptive-link">상품 보기</a>
-            <a href="/consultation" class="adaptive-link">상담 신청</a>
-          </div>
-        </div>
-      `
-    } else if (lowerQuery.includes('자동차보험')) {
-      mockHtml = `
-        <div class="custom-content">
-          <h2>자동차보험 안내</h2>
-          <p>SecureLife 자동차보험은 다양한 특약과 함께 합리적인 보험료를 제공합니다.</p>
-          <ul>
-            <li>무사고 할인 최대 70%</li>
-            <li>24시간 긴급출동 서비스</li>
-            <li>대물/대인 무제한 보장 가능</li>
-          </ul>
-          <div class="action-buttons">
-            <a href="/products" class="adaptive-link">상품 보기</a>
-            <a href="/consultation" class="adaptive-link">상담 신청</a>
-          </div>
-        </div>
-      `
-    } else {
-      mockHtml = `
-        <div class="custom-content">
-          <h2>맞춤형 보험 상품 안내</h2>
-          <p>검색하신 내용에 맞는 보험 상품을 추천해 드립니다.</p>
-          <p>원하시는 보험 종류를 더 구체적으로 알려주시면 상세한 안내를 드릴 수 있습니다.</p>
-          <ul>
-            <li>생명보험</li>
-            <li>건강보험</li>
-            <li>자동차보험</li>
-            <li>재물보험</li>
-          </ul>
-          <div class="action-buttons">
-            <a href="/products" class="adaptive-link">전체 상품 보기</a>
-          </div>
-        </div>
-      `
+    // 마크다운 링크 처리
+    enhanced = enhanced.replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+    )
+
+    // 강조 텍스트 처리
+    enhanced = enhanced.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    enhanced = enhanced.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+
+    // 줄바꿈 처리
+    enhanced = enhanced.replace(/\n\n/g, '</p><p>')
+    enhanced = enhanced.replace(/\n/g, '<br>')
+
+    // 문단 태그로 감싸기
+    if (!enhanced.startsWith('<p>')) {
+      enhanced = `<p>${enhanced}</p>`
     }
 
-    // 마크다운 링크가 포함되어 있을 수 있으므로 이를 HTML 링크로 변환
-    return this.convertMarkdownLinksToHtml(mockHtml)
+    return enhanced
   }
 
-  // 마크다운 텍스트를 HTML로 변환하는 함수 추가
-  public convertMarkdownLinksToHtml(text: string): string {
-    if (!text) return ''
+  // 컴포넌트 개선
+  private enhanceComponent(component: UIComponent): UIComponent {
+    return {
+      ...component,
+      title: this.enhanceText(component.title),
+      content: this.enhanceText(component.content),
+    }
+  }
 
-    // 마크다운 링크 패턴: [링크텍스트](URL)
-    const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g
+  // 텍스트 개선 (기본적인 마크다운 처리)
+  private enhanceText(text: string): string {
+    if (!text) return text
 
-    // 마크다운 링크를 HTML <a> 태그로 변환
-    return text.replace(linkPattern, (match, linkText, url) => {
-      // 내부 경로인 경우 router-link를 사용하거나, 일반 <a> 태그로 변환
-      if (url.startsWith('/')) {
-        return `<a href="${url}" class="adaptive-link">${linkText}</a>`
-      } else {
-        // 외부 링크는 새 탭에서 열리도록 설정
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="adaptive-link">${linkText}</a>`
-      }
-    })
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+  }
+
+  // 링크 감지
+  private detectLinks(text: string): boolean {
+    const linkRegex = /(https?:\/\/[^\s]+)|(<a[^>]*>)/i
+    return linkRegex.test(text)
+  }
+
+  // UI 개선사항 생성
+  private generateUIEnhancements(response: BffResponse): BffResponse['uiSuggestions'] {
+    return {
+      fontSize: response.confidence > 0.7 ? 'medium' : 'large',
+      contrast: 'high',
+      simplicity: response.contentType === 'error' ? 'minimal' : 'standard',
+      interactionMethod: 'touch',
+    }
+  }
+
+  // 마크다운 링크를 HTML로 변환 (AIResponse.vue에서 사용)
+  public convertMarkdownLinksToHtml(content: string): string {
+    if (!content) return content
+
+    let processed = content
+
+    // 마크다운 링크 [텍스트](URL) → HTML 링크
+    processed = processed.replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer" class="adaptive-link">$1</a>',
+    )
+
+    // 일반 URL을 링크로 변환
+    processed = processed.replace(
+      /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g,
+      '<a href="$1" target="_blank" rel="noopener noreferrer" class="adaptive-link">$1</a>',
+    )
+
+    // 강조 문법 처리
+    processed = processed.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    processed = processed.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+
+    // 줄바꿈 처리
+    processed = processed.replace(/\n\n/g, '</p><p>')
+    processed = processed.replace(/\n/g, '<br>')
+
+    // 문단 태그로 감싸기 (이미 HTML 태그가 없을 때만)
+    if (!processed.includes('<p>') && !processed.includes('<div>')) {
+      processed = `<p>${processed}</p>`
+    }
+
+    return processed
+  }
+
+  // 컴포넌트를 답변 텍스트로 변환
+  private generateAnswerFromComponents(components: UIComponent[]): string {
+    if (!components || components.length === 0) {
+      return '요청하신 정보를 준비하고 있습니다.'
+    }
+
+    const answers = components
+      .map((comp) => {
+        switch (comp.type) {
+          case 'hero_section':
+            return `${comp.title}: ${comp.content}`
+          case 'product_card':
+            return `추천 상품: ${comp.title} - ${comp.content}`
+          case 'notice':
+            return `안내: ${comp.content}`
+          case 'faq_item':
+            return `Q: ${comp.title}\nA: ${comp.content}`
+          default:
+            return comp.content || comp.title || ''
+        }
+      })
+      .filter(Boolean)
+
+    return answers.join('\n\n')
+  }
+
+  // 쿼리에서 페이지 타입 추론
+  private inferPageTypeFromQuery(query: string): string {
+    const queryLower = query.toLowerCase()
+
+    if (queryLower.includes('상품') || queryLower.includes('보험')) {
+      return 'products'
+    } else if (queryLower.includes('청구') || queryLower.includes('보험금')) {
+      return 'claim'
+    } else if (
+      queryLower.includes('내') ||
+      queryLower.includes('계약') ||
+      queryLower.includes('가입')
+    ) {
+      return 'mypage'
+    } else if (queryLower.includes('상담') || queryLower.includes('문의')) {
+      return 'consultation'
+    } else if (queryLower.includes('질문') || queryLower.includes('faq')) {
+      return 'faq'
+    }
+
+    return 'home'
+  }
+
+  // 페이지 타입에서 추천 경로 생성
+  private getRecommendedPathFromPageType(pageType: string): string | null {
+    const pathMap: Record<string, string> = {
+      home: '/',
+      products: '/products',
+      claim: '/claim',
+      mypage: '/mypage',
+      consultation: '/consultation',
+      faq: '/faq',
+    }
+
+    return pathMap[pageType] || null
+  }
+
+  // Backend 응답을 UI 응답으로 변환
+  private convertToUIResponse(backendResponse: any): DynamicUIResponse {
+    return {
+      success: true,
+      components: backendResponse.components || [],
+      layout: backendResponse.layout || { type: 'stack', spacing: 'medium' },
+      accessibility: backendResponse.accessibility || { high_contrast: false, large_text: false },
+      metadata: backendResponse.metadata || {},
+      error: null,
+    }
+  }
+
+  // 폴백 UI 생성
+  private generateFallbackUI(pageType: string): DynamicUIResponse {
+    const fallbackComponents: UIComponent[] = [
+      {
+        type: 'notice',
+        id: 'fallback',
+        title: '잠시만 기다려주세요',
+        content: '데이터를 불러오는 중입니다. 잠시만 기다려주세요.',
+        data: {},
+        style: 'info',
+        priority: 1,
+      },
+    ]
+
+    return {
+      success: false,
+      components: fallbackComponents,
+      layout: { type: 'stack', spacing: 'medium' },
+      accessibility: { high_contrast: false, large_text: false },
+      metadata: { fallback: true, pageType },
+      error: '일시적 오류가 발생했습니다.',
+    }
   }
 }
 
-// BFF 응답 인터페이스
+// 타입 정의들
+export interface DynamicUIResponse {
+  success: boolean
+  components: UIComponent[]
+  layout: {
+    type: string
+    spacing: string
+    columns?: number
+  }
+  accessibility: {
+    high_contrast: boolean
+    large_text: boolean
+    simplified_layout?: boolean
+  }
+  metadata: Record<string, any>
+  error: string | null
+}
+
+export interface UIComponent {
+  type: string
+  id: string
+  title: string
+  content: string
+  data: Record<string, any>
+  style: string
+  priority: number
+}
+
+export interface APIResponse<T> {
+  success: boolean
+  data: T
+  total?: number
+  error?: string
+}
+
+export interface Product {
+  id: string
+  category_id: string
+  name: string
+  description: string
+  features: string[]
+  base_price: number
+  max_coverage: number
+  age_limit_min: number
+  age_limit_max: number
+  tags: string[]
+  is_popular: boolean
+  is_new: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Category {
+  id: string
+  name: string
+  description: string
+  icon_url: string
+  sort_order: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface Policy {
+  id: string
+  user_id: string
+  product_id: string
+  policy_number: string
+  status: string
+  start_date: string
+  end_date: string | null
+  premium_amount: number
+  coverage_amount: number
+  beneficiary_name: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Claim {
+  id: string
+  user_id: string
+  policy_id: string
+  claim_number: string
+  claim_type: string
+  status: string
+  claim_amount: number
+  approved_amount: number | null
+  description: string
+  documents: string[]
+  submitted_at: string
+  reviewed_at: string | null
+  processed_at: string | null
+  created_at: string
+}
+
+export interface FAQ {
+  id: string
+  category: string
+  question: string
+  answer: string
+  keywords: string[]
+  view_count: number
+  is_popular: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Testimonial {
+  id: string
+  user_id: string
+  product_id: string
+  rating: number
+  title: string
+  content: string
+  is_featured: boolean
+  is_verified: boolean
+  created_at: string
+  // 검색 결과에서 조인된 데이터
+  users?: {
+    name: string
+  }
+  insurance_products?: {
+    name: string
+    insurance_categories?: {
+      name: string
+    }
+  }
+}
+
+// 레거시 호환성을 위한 기존 인터페이스
 export interface BffResponse {
   answer: string
   recommendedPath: string | null
   confidence: number
-  contentType: string // 'text', 'json', 'html', 'error'
-  uiSuggestions?: {
-    fontSize: string // '표준', '크게', '매우 크게'
-    contrast: string // '표준', '높음'
-    simplicity: string // '표준', '높음'
-    interactionMethod: string // '표준', '간편함'
-  }
+  contentType: string
   hasLinks: boolean
+  components?: UIComponent[]
+  searchResults?: SearchResults
+  uiSuggestions?: {
+    fontSize: string
+    contrast: string
+    simplicity: string
+    interactionMethod: string
+  }
+}
+
+// 검색 결과 타입 정의
+export interface SearchResults {
+  products: Product[]
+  faqs: FAQ[]
+  testimonials: Testimonial[]
 }

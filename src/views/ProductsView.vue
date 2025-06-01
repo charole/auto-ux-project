@@ -1,148 +1,29 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { Product, Category, UIComponent } from '../services/BffService'
+import { BffService } from '../services/BffService'
 
-// 상품 카테고리
-const categories = [
-  { id: 'all', name: '전체상품' },
-  { id: 'life', name: '생명보험' },
-  { id: 'health', name: '건강보험' },
-  { id: 'car', name: '자동차보험' },
-  { id: 'property', name: '재물보험' },
-]
+const route = useRoute()
+const router = useRouter()
 
+// 상태 관리
+const isLoading = ref(true)
+const isProcessing = ref(false)
 const selectedCategory = ref('all')
+const searchQuery = ref('')
 
-// 보험 상품 데이터
-const products = [
-  {
-    id: 'life-1',
-    category: 'life',
-    name: '안심 종합보험',
-    description: '사망/상해 종합 보장으로 가족의 행복을 지킵니다',
-    features: [
-      '사망보험금 최대 3억원',
-      '각종 재해사고 의료비 보장',
-      '중대질병 진단금 보장',
-      '저렴한 보험료와 다양한 특약',
-    ],
-    price: '월 45,000원부터',
-    image: '🛡️',
-    highlight: true,
-    tags: ['인기상품', '가족보험'],
-  },
-  {
-    id: 'health-1',
-    category: 'health',
-    name: '미래 암보험',
-    description: '국내 사망원인 1위, 암에 대한 강력한 보장플랜',
-    features: [
-      '암 진단시 최대 1억원 지급',
-      '암 수술비/입원비 보장',
-      '항암치료비 추가 보장',
-      '특약으로 3대 질병까지 보장 가능',
-    ],
-    price: '월 35,000원부터',
-    image: '🏥',
-    highlight: true,
-    tags: ['베스트셀러', '프리미엄'],
-  },
-  {
-    id: 'car-1',
-    category: 'car',
-    name: '스마트 운전자보험',
-    description: '교통사고 발생 시 경제적 부담을 줄여줍니다',
-    features: [
-      '자동차 사고 부상 치료비 지원',
-      '벌금, 변호사 선임비용 보장',
-      '면허정지/취소 위로금 지급',
-      '자동차 시장가액의 손해액 보장',
-    ],
-    price: '월 25,000원부터',
-    image: '🚗',
-    highlight: false,
-    tags: ['신상품'],
-  },
-  {
-    id: 'life-2',
-    category: 'life',
-    name: '어린이 종합보험',
-    description: '우리 아이의 미래를 위한 종합 보장 플랜',
-    features: [
-      '성장기 안전사고 보장',
-      '입원/통원 의료비 보장',
-      '학업 중단 시 교육비 지원',
-      '만기 시 학자금 지원 옵션',
-    ],
-    price: '월 30,000원부터',
-    image: '👶',
-    highlight: false,
-    tags: ['어린이', '교육보험'],
-  },
-  {
-    id: 'health-2',
-    category: 'health',
-    name: '실버 케어보험',
-    description: '노후 건강을 책임지는 시니어 특화 건강보험',
-    features: [
-      '노인성 질환 진단비 보장',
-      '간병비용 지급',
-      '입원일당 및 수술비 보장',
-      '장기요양 서비스 연계',
-    ],
-    price: '월 55,000원부터',
-    image: '👵',
-    highlight: false,
-    tags: ['시니어', '간병보장'],
-  },
-  {
-    id: 'property-1',
-    category: 'property',
-    name: '주택 화재보험',
-    description: '소중한 내 집을 위한 안전 보장 솔루션',
-    features: [
-      '화재로 인한 건물/가재도구 손해 보상',
-      '도난 및 침수 피해 보상',
-      '일상생활 배상책임 보장',
-      '임시 거주비용 지원',
-    ],
-    price: '월 15,000원부터',
-    image: '🏠',
-    highlight: false,
-    tags: ['주택', '화재보험'],
-  },
-  {
-    id: 'car-2',
-    category: 'car',
-    name: '프리미엄 자동차보험',
-    description: '더 넓은 보장범위로 운전의 품격을 높이세요',
-    features: [
-      '무제한 대인/대물 배상 책임',
-      '자기신체사고 최대 1억원 보장',
-      '고급 렌트카 지원 서비스',
-      '24시간 긴급출동 서비스',
-    ],
-    price: '월 80,000원부터',
-    image: '🚙',
-    highlight: true,
-    tags: ['프리미엄', '무제한보장'],
-  },
-  {
-    id: 'health-3',
-    category: 'health',
-    name: '단기 여행자보험',
-    description: '여행 중 발생할 수 있는 위험에 대비하세요',
-    features: [
-      '해외 의료비 실비 보장',
-      '여행 취소/지연에 따른 보상',
-      '수하물 분실/파손 보상',
-      '24시간 해외 의료 지원 서비스',
-    ],
-    price: '1일 3,000원부터',
-    image: '✈️',
-    highlight: false,
-    tags: ['여행', '단기보험'],
-  },
-]
+// 데이터 상태
+const categories = ref<Category[]>([])
+const products = ref<Product[]>([])
+const filteredProducts = ref<Product[]>([])
+const uiComponents = ref<UIComponent[]>([])
+
+// BFF 서비스 인스턴스
+const bffService = new BffService()
+
+// 사용자 정보
+const userId = ref('')
 
 // 보험료 계산기 상태
 const calculatorForm = ref({
@@ -161,16 +42,167 @@ const calculationResult = ref({
   recommendation: '',
 })
 
-// 선택된 카테고리에 따른 상품 필터링
-const filteredProducts = computed(() => {
-  if (selectedCategory.value === 'all') {
-    return products
+// 컴포넌트 마운트 시 실행
+onMounted(async () => {
+  await loadInitialData()
+
+  // URL 쿼리 파라미터에서 카테고리 설정
+  if (route.query.category) {
+    selectedCategory.value = route.query.category as string
   }
-  return products.filter((product) => product.category === selectedCategory.value)
+
+  // URL 쿼리 파라미터에서 검색어 설정
+  if (route.query.search) {
+    searchQuery.value = route.query.search as string
+  }
 })
 
+// 카테고리 변경 감지
+watch(selectedCategory, (newCategory) => {
+  updateFilters()
+
+  // URL 업데이트
+  router.replace({
+    query: {
+      ...route.query,
+      category: newCategory === 'all' ? undefined : newCategory,
+    },
+  })
+})
+
+// 검색어 변경 감지
+watch(searchQuery, (newQuery) => {
+  updateFilters()
+
+  // URL 업데이트
+  router.replace({
+    query: {
+      ...route.query,
+      search: newQuery || undefined,
+    },
+  })
+})
+
+// 초기 데이터 로드
+const loadInitialData = async () => {
+  try {
+    isLoading.value = true
+
+    // 사용자 ID 설정
+    userId.value = 'demo-user-001'
+
+    // 동적 UI 생성
+    await generateProductsPageUI()
+
+    // 카테고리 및 상품 로드
+    await Promise.all([loadCategories(), loadProducts()])
+
+    // 필터 적용
+    updateFilters()
+  } catch (error) {
+    console.error('상품 페이지 초기 데이터 로드 실패:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 상품 페이지 동적 UI 생성
+const generateProductsPageUI = async () => {
+  try {
+    const response = await bffService.generateDynamicUI('products', userId.value)
+
+    if (response.success) {
+      uiComponents.value = response.components
+    }
+  } catch (error) {
+    console.error('상품 페이지 UI 생성 실패:', error)
+  }
+}
+
+// 카테고리 데이터 로드
+const loadCategories = async () => {
+  try {
+    const response = await bffService.getInsuranceCategories()
+
+    if (response.success) {
+      // '전체' 카테고리 추가
+      categories.value = [
+        {
+          id: 'all',
+          name: '전체상품',
+          description: '모든 보험 상품',
+          icon_url: '',
+          sort_order: 0,
+          is_active: true,
+          created_at: new Date().toString(),
+        },
+        ...response.data,
+      ]
+    }
+  } catch (error) {
+    console.error('카테고리 로드 실패:', error)
+  }
+}
+
+// 상품 데이터 로드
+const loadProducts = async () => {
+  try {
+    const categoryId = selectedCategory.value === 'all' ? undefined : selectedCategory.value
+    const response = await bffService.getInsuranceProducts(categoryId)
+
+    if (response.success) {
+      products.value = response.data
+    }
+  } catch (error) {
+    console.error('상품 로드 실패:', error)
+  }
+}
+
+// 필터 업데이트
+const updateFilters = () => {
+  let filtered = [...products.value]
+
+  // 카테고리 필터
+  if (selectedCategory.value !== 'all') {
+    filtered = filtered.filter((product) => product.category_id === selectedCategory.value)
+  }
+
+  // 검색어 필터
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase()
+    filtered = filtered.filter(
+      (product) =>
+        product.name.toLowerCase().includes(query) ||
+        product.description?.toLowerCase().includes(query) ||
+        product.features?.some((feature) => feature.toLowerCase().includes(query)),
+    )
+  }
+
+  filteredProducts.value = filtered
+}
+
+// 카테고리 변경
+const selectCategory = (categoryId: string) => {
+  selectedCategory.value = categoryId
+}
+
+// 상품 상세 페이지로 이동
+const viewProductDetail = (productId: string) => {
+  router.push(`/products/${productId}`)
+}
+
+// 상품 비교 기능
+const compareProducts = (productIds: string[]) => {
+  if (productIds.length > 1) {
+    router.push({
+      path: '/products/compare',
+      query: { products: productIds.join(',') },
+    })
+  }
+}
+
 // 보험료 계산
-const calculateInsurance = () => {
+const calculateInsurance = async () => {
   if (
     !calculatorForm.value.name ||
     !calculatorForm.value.age ||
@@ -183,8 +215,10 @@ const calculateInsurance = () => {
   calculationResult.value.loading = true
   calculationResult.value.show = false
 
-  // 계산 시뮬레이션 (실제로는 API 호출)
-  setTimeout(() => {
+  try {
+    // Backend API를 통한 보험료 계산 (임시로 클라이언트에서 계산)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
     const basePrice = Math.floor(calculatorForm.value.age * 550)
     const genderFactor = calculatorForm.value.gender === 'male' ? 1.15 : 0.95
     let productFactor = 1
@@ -198,29 +232,30 @@ const calculateInsurance = () => {
       case 'health':
         productFactor = 1.3
         calculationResult.value.recommendation = '미래 암보험'
-        calculationResult.value.coverage = 30000000
-        break
-      case 'car':
-        productFactor = 0.95
-        calculationResult.value.recommendation = '스마트 운전자보험'
         calculationResult.value.coverage = 15000000
         break
-      case 'property':
-        productFactor = 0.8
-        calculationResult.value.recommendation = '주택 화재보험'
+      case 'car':
+        productFactor = 0.9
+        calculationResult.value.recommendation = '스마트 운전자보험'
         calculationResult.value.coverage = 10000000
         break
+      default:
+        productFactor = 1.0
+        calculationResult.value.recommendation = '종합보험'
+        calculationResult.value.coverage = 10000000
     }
 
-    calculationResult.value.monthlyPrice =
-      Math.round((basePrice * genderFactor * productFactor) / 100) * 100
-    calculationResult.value.loading = false
+    calculationResult.value.monthlyPrice = Math.floor(basePrice * genderFactor * productFactor)
     calculationResult.value.show = true
-  }, 1500)
+  } catch (error) {
+    console.error('보험료 계산 실패:', error)
+  } finally {
+    calculationResult.value.loading = false
+  }
 }
 
-// 폼 초기화
-const resetForm = () => {
+// 계산 결과 초기화
+const resetCalculator = () => {
   calculatorForm.value = {
     name: '',
     age: null as unknown as number,
@@ -229,214 +264,358 @@ const resetForm = () => {
   }
   calculationResult.value.show = false
 }
+
+// 상담 신청
+const requestConsultation = (productId?: string) => {
+  router.push({
+    path: '/consultation',
+    query: productId ? { product: productId } : {},
+  })
+}
+
+// 청구 페이지로 이동
+const goToClaim = () => {
+  router.push('/claim')
+}
+
+// 인기 상품 필터
+const popularProducts = computed(() => {
+  return filteredProducts.value.filter((product) => product.is_popular).slice(0, 3)
+})
+
+// 카테고리별 상품 수
+const getCategoryCount = (categoryId: string) => {
+  if (categoryId === 'all') return products.value.length
+  return products.value.filter((product) => product.category_id === categoryId).length
+}
+
+// 컴포넌트 스타일 클래스
+const getComponentClass = (component: UIComponent) => {
+  const baseClass = 'dynamic-component'
+  const typeClass = `component-${component.type}`
+  const styleClass = `style-${component.style}`
+
+  return `${baseClass} ${typeClass} ${styleClass}`
+}
 </script>
 
 <template>
-  <div class="products-view">
-    <div class="page-header glass-panel">
-      <div class="header-content">
-        <h1 class="page-title">보험상품</h1>
-        <p class="page-description">
-          고객님의 든든한 미래를 위한 <span class="text-accent">맞춤형 보험상품</span>을 찾아보세요.
-        </p>
-      </div>
-    </div>
+  <main class="products-page">
+    <div class="container">
+      <!-- 페이지 헤더 -->
+      <header class="page-header glass-panel">
+        <h1>보험 상품</h1>
+        <p>다양한 보험 상품을 비교하고 나에게 맞는 보험을 찾아보세요.</p>
 
-    <!-- 보험료 계산기 섹션 -->
-    <section class="calculator-section card-neumorphic">
-      <div class="section-header">
-        <h2>보험료 계산기</h2>
-        <p>간단한 정보 입력으로 예상 보험료를 확인해보세요</p>
-      </div>
-
-      <div class="calculator-container">
-        <form
-          @submit.prevent="calculateInsurance"
-          class="calculator-form"
-          v-if="!calculationResult.show"
-        >
-          <div class="form-row">
-            <div class="form-group">
-              <label for="name">이름</label>
-              <input type="text" id="name" v-model="calculatorForm.name" required />
-            </div>
-
-            <div class="form-group">
-              <label for="age">나이</label>
-              <input
-                type="number"
-                id="age"
-                v-model="calculatorForm.age"
-                min="1"
-                max="100"
-                required
-              />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label for="gender">성별</label>
-              <select id="gender" v-model="calculatorForm.gender" required>
-                <option value="" disabled selected>선택하세요</option>
-                <option value="male">남성</option>
-                <option value="female">여성</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="productType">희망 보험 종류</label>
-              <select id="productType" v-model="calculatorForm.productType" required>
-                <option value="" disabled selected>선택하세요</option>
-                <option value="life">생명보험</option>
-                <option value="health">건강보험</option>
-                <option value="car">자동차보험</option>
-                <option value="property">재물보험</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-actions">
-            <button type="submit" class="button-3d">보험료 계산하기</button>
-          </div>
-        </form>
-
-        <div class="calculation-result" v-if="calculationResult.show">
-          <div class="result-header">
-            <h3>{{ calculatorForm.name }}님의 예상 보험료</h3>
-          </div>
-
-          <div class="result-content">
-            <div class="result-item">
-              <div class="result-label">월 보험료</div>
-              <div class="result-value price">
-                {{ calculationResult.monthlyPrice.toLocaleString() }}원
-              </div>
-            </div>
-
-            <div class="result-item">
-              <div class="result-label">보장금액</div>
-              <div class="result-value">
-                최대 {{ (calculationResult.coverage / 10000).toLocaleString() }}만원
-              </div>
-            </div>
-
-            <div class="result-item">
-              <div class="result-label">추천상품</div>
-              <div class="result-value">{{ calculationResult.recommendation }}</div>
-            </div>
-          </div>
-
-          <p class="note">* 위 금액은 예상 금액으로, 정확한 보험료는 상담을 통해 확인해 주세요.</p>
-
-          <div class="result-actions">
-            <button @click="resetForm" class="secondary-button">다시 계산하기</button>
-            <RouterLink to="/consultation" class="button-3d">상담 신청하기</RouterLink>
-          </div>
-        </div>
-
-        <div class="loading-indicator" v-if="calculationResult.loading">
-          <div class="spinner"></div>
-          <p>보험료를 계산 중입니다...</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 보험상품 목록 섹션 -->
-    <section class="products-section">
-      <div class="section-header">
-        <h2>보험상품 라인업</h2>
-        <div class="category-tabs">
-          <button
-            v-for="category in categories"
-            :key="category.id"
-            @click="selectedCategory = category.id"
-            :class="['category-tab', { active: selectedCategory === category.id }]"
-          >
-            {{ category.name }}
-            <div class="tab-indicator" v-if="selectedCategory === category.id"></div>
+        <!-- 검색 바 -->
+        <div class="search-container">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="상품명이나 키워드로 검색하세요..."
+            class="search-input"
+          />
+          <button class="search-button">
+            <i class="icon-search"></i>
           </button>
         </div>
+      </header>
+
+      <!-- 로딩 상태 -->
+      <div v-if="isLoading" class="loading-container">
+        <div class="loading-spinner"></div>
+        <p>보험 상품을 불러오고 있습니다...</p>
       </div>
 
-      <div class="products-grid">
-        <div
-          v-for="product in filteredProducts"
-          :key="product.id"
-          class="product-card"
-          :class="{ highlighted: product.highlight }"
-        >
-          <div class="product-image">{{ product.image }}</div>
-          <div class="product-content">
-            <div class="product-tags">
-              <span class="product-tag" v-for="tag in product.tags" :key="tag">{{ tag }}</span>
+      <!-- 메인 콘텐츠 -->
+      <div v-else class="main-content">
+        <!-- 동적 생성된 UI 컴포넌트들 -->
+        <section v-if="uiComponents.length > 0" class="dynamic-ui-section">
+          <div
+            v-for="component in uiComponents"
+            :key="component.id"
+            :class="getComponentClass(component)"
+          >
+            <!-- Hero Section -->
+            <template v-if="component.type === 'hero_section'">
+              <div class="hero-dynamic glass-card">
+                <h2>{{ component.title }}</h2>
+                <p>{{ component.content }}</p>
+              </div>
+            </template>
+
+            <!-- Notice -->
+            <template v-else-if="component.type === 'notice'">
+              <div :class="`notice notice-${component.style} glass-card`">
+                <h4>{{ component.title }}</h4>
+                <p>{{ component.content }}</p>
+              </div>
+            </template>
+
+            <!-- Stats -->
+            <template v-else-if="component.type === 'stats'">
+              <div class="stats-dynamic glass-card">
+                <h3>{{ component.title }}</h3>
+                <div class="stats-grid">
+                  <div v-for="(stat, index) in component.data.stats" :key="index" class="stat-item">
+                    <div class="stat-value">{{ stat.value }}</div>
+                    <div class="stat-label">{{ stat.label }}</div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+
+        <!-- 카테고리 필터 -->
+        <section class="category-filter">
+          <h2 class="sr-only">카테고리 선택</h2>
+          <div class="category-tabs">
+            <button
+              v-for="category in categories"
+              :key="category.id"
+              @click="selectCategory(category.id)"
+              :class="['category-tab', { active: selectedCategory === category.id }]"
+            >
+              {{ category.name }}
+              <span class="count">({{ getCategoryCount(category.id) }})</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 인기 상품 섹션 -->
+        <section v-if="popularProducts.length > 0" class="popular-products">
+          <h2 class="section-title">인기 상품</h2>
+          <div class="products-grid popular">
+            <div
+              v-for="product in popularProducts"
+              :key="product.id"
+              class="product-card popular-card glass-card"
+              @click="viewProductDetail(product.id)"
+            >
+              <div class="product-badge">인기</div>
+              <h3>{{ product.name }}</h3>
+              <p class="product-description">{{ product.description }}</p>
+              <div v-if="product.features?.length" class="features">
+                <span
+                  v-for="feature in product.features.slice(0, 2)"
+                  :key="feature"
+                  class="feature-tag"
+                >
+                  {{ feature }}
+                </span>
+              </div>
+              <div class="product-price">월 {{ product.base_price?.toLocaleString() }}원부터</div>
+              <div class="product-actions">
+                <button class="btn-primary" @click.stop="viewProductDetail(product.id)">
+                  자세히 보기
+                </button>
+                <button class="btn-secondary" @click.stop="requestConsultation(product.id)">
+                  상담신청
+                </button>
+              </div>
             </div>
-            <h3 class="product-name">{{ product.name }}</h3>
-            <p class="product-description">{{ product.description }}</p>
-            <ul class="product-features">
-              <li v-for="(feature, index) in product.features" :key="index">{{ feature }}</li>
-            </ul>
-            <div class="product-price">{{ product.price }}</div>
-            <div class="product-actions">
-              <RouterLink :to="`/consultation?product=${product.id}`" class="secondary-button"
-                >상담 신청</RouterLink
+          </div>
+        </section>
+
+        <!-- 상품 목록 -->
+        <section class="products-section">
+          <div class="section-header">
+            <h2 class="section-title">
+              {{
+                selectedCategory === 'all'
+                  ? '전체 상품'
+                  : categories.find((c) => c.id === selectedCategory)?.name
+              }}
+            </h2>
+            <div class="results-count">{{ filteredProducts.length }}개 상품</div>
+          </div>
+
+          <!-- 정렬 및 필터 옵션 -->
+          <div class="filter-controls">
+            <select class="sort-select">
+              <option value="popular">인기순</option>
+              <option value="price-low">가격 낮은순</option>
+              <option value="price-high">가격 높은순</option>
+              <option value="name">이름순</option>
+            </select>
+          </div>
+
+          <!-- 상품 그리드 -->
+          <div v-if="filteredProducts.length > 0" class="products-grid">
+            <div
+              v-for="product in filteredProducts"
+              :key="product.id"
+              class="product-card card-neumorphic"
+              @click="viewProductDetail(product.id)"
+            >
+              <div v-if="product.is_popular" class="product-badge">인기</div>
+              <div v-if="product.is_new" class="product-badge new">신상품</div>
+
+              <h3>{{ product.name }}</h3>
+              <p class="product-description">{{ product.description }}</p>
+
+              <div v-if="product.features?.length" class="features">
+                <span
+                  v-for="feature in product.features.slice(0, 3)"
+                  :key="feature"
+                  class="feature-tag"
+                >
+                  {{ feature }}
+                </span>
+              </div>
+
+              <div class="product-price">
+                <span v-if="product.base_price">
+                  월 {{ product.base_price.toLocaleString() }}원부터
+                </span>
+                <span v-else>상담 후 결정</span>
+              </div>
+
+              <div class="product-actions">
+                <button class="btn-primary" @click.stop="viewProductDetail(product.id)">
+                  상세보기
+                </button>
+                <button class="btn-secondary" @click.stop="requestConsultation(product.id)">
+                  상담신청
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 검색 결과 없음 -->
+          <div v-else class="no-results glass-card">
+            <div class="no-results-icon">🔍</div>
+            <h3>검색 결과가 없습니다</h3>
+            <p>다른 검색어나 카테고리를 시도해보세요.</p>
+            <button
+              class="btn-primary"
+              @click="
+                searchQuery = ''
+                selectedCategory = 'all'
+              "
+            >
+              전체 상품 보기
+            </button>
+          </div>
+        </section>
+
+        <!-- 보험료 계산기 -->
+        <section class="calculator-section">
+          <div class="calculator-card glass-card">
+            <h2 class="section-title">보험료 간단 계산</h2>
+            <p class="section-subtitle">기본 정보로 예상 보험료를 확인해보세요</p>
+
+            <form @submit.prevent="calculateInsurance" class="calculator-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="name">이름</label>
+                  <input
+                    id="name"
+                    v-model="calculatorForm.name"
+                    type="text"
+                    placeholder="이름을 입력하세요"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label for="age">나이</label>
+                  <input
+                    id="age"
+                    v-model.number="calculatorForm.age"
+                    type="number"
+                    placeholder="나이"
+                    min="1"
+                    max="100"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="gender">성별</label>
+                  <select id="gender" v-model="calculatorForm.gender" required>
+                    <option value="">선택하세요</option>
+                    <option value="male">남성</option>
+                    <option value="female">여성</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="productType">보험 유형</label>
+                  <select id="productType" v-model="calculatorForm.productType" required>
+                    <option value="">선택하세요</option>
+                    <option value="life">생명보험</option>
+                    <option value="health">건강보험</option>
+                    <option value="car">자동차보험</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                class="btn-primary calculate-btn"
+                :disabled="calculationResult.loading"
               >
-              <RouterLink :to="`/products/${product.id}`" class="button-3d">자세히 보기</RouterLink>
+                <span v-if="calculationResult.loading">계산 중...</span>
+                <span v-else>보험료 계산하기</span>
+              </button>
+            </form>
+
+            <!-- 계산 결과 -->
+            <div v-if="calculationResult.show" class="calculation-result">
+              <h3>계산 결과</h3>
+              <div class="result-details">
+                <div class="result-item">
+                  <label>예상 월 보험료</label>
+                  <strong>{{ calculationResult.monthlyPrice.toLocaleString() }}원</strong>
+                </div>
+                <div class="result-item">
+                  <label>보장 금액</label>
+                  <strong>{{ (calculationResult.coverage / 10000).toFixed(0) }}만원</strong>
+                </div>
+                <div class="result-item">
+                  <label>추천 상품</label>
+                  <strong>{{ calculationResult.recommendation }}</strong>
+                </div>
+              </div>
+
+              <div class="result-actions">
+                <button class="btn-primary" @click="requestConsultation()">전문 상담 신청</button>
+                <button class="btn-secondary" @click="resetCalculator">다시 계산</button>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
+
+        <!-- 추가 서비스 -->
+        <section class="additional-services">
+          <h2 class="section-title">추가 서비스</h2>
+          <div class="services-grid">
+            <div class="service-card glass-card" @click="requestConsultation()">
+              <div class="service-icon">💬</div>
+              <h3>전문 상담</h3>
+              <p>보험 전문가와 1:1 맞춤 상담을 받아보세요</p>
+            </div>
+
+            <div class="service-card glass-card" @click="goToClaim()">
+              <div class="service-icon">📋</div>
+              <h3>보험금 청구</h3>
+              <p>간편하게 보험금 청구 신청을 해보세요</p>
+            </div>
+
+            <div class="service-card glass-card" @click="router.push('/faq')">
+              <div class="service-icon">❓</div>
+              <h3>자주 묻는 질문</h3>
+              <p>궁금한 내용을 빠르게 확인해보세요</p>
+            </div>
+          </div>
+        </section>
       </div>
-    </section>
-
-    <!-- FAQ 섹션 -->
-    <section class="faq-section glass-card">
-      <div class="section-header">
-        <h2>자주 묻는 질문</h2>
-      </div>
-
-      <div class="faq-list">
-        <div class="faq-item">
-          <div class="faq-question">
-            <h3>보험상품 가입 시 유의사항이 있나요?</h3>
-          </div>
-          <div class="faq-answer">
-            <p>
-              보험가입 시에는 계약 전 알릴 의무가 있으며, 청약철회 기간은 보험증권을 받은 날로부터
-              15일 이내입니다. 또한 보험료 납입 기간과 보장 내용을 꼼꼼히 확인하시기 바랍니다.
-            </p>
-          </div>
-        </div>
-
-        <div class="faq-item">
-          <div class="faq-question">
-            <h3>보험료는 어떻게 결정되나요?</h3>
-          </div>
-          <div class="faq-answer">
-            <p>
-              보험료는 연령, 성별, 직업, 건강상태, 가입 금액 등에 따라 달라집니다. 정확한 보험료는
-              상담사와 상담 후 결정됩니다.
-            </p>
-          </div>
-        </div>
-
-        <div class="faq-item">
-          <div class="faq-question">
-            <h3>보험금 청구는 어떻게 하나요?</h3>
-          </div>
-          <div class="faq-answer">
-            <p>
-              보험금 청구는 홈페이지, 모바일 앱, 고객센터 전화를 통해 가능합니다. 필요한 서류는
-              진단서, 진료차트, 영수증 등이 있으며 청구 유형에 따라 다를 수 있습니다.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div class="faq-action">
-        <RouterLink to="/faq" class="secondary-button">더 많은 FAQ 보기</RouterLink>
-      </div>
-    </section>
-  </div>
+    </div>
+  </main>
 </template>
 
 <style scoped>

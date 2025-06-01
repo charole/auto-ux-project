@@ -1,43 +1,41 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import type { BffResponse } from '../services/BffService'
+import type {
+  DynamicUIResponse,
+  UIComponent,
+  Product,
+  Category,
+  Testimonial,
+} from '../services/BffService'
 import { BffService } from '../services/BffService'
 
 const router = useRouter()
 
-// 자연어 입력 및 응답 상태
+// 상태 관리
 const userQuery = ref('')
+const isLoading = ref(true)
 const isProcessing = ref(false)
-const response = ref<BffResponse | null>(null)
+const uiComponents = ref<UIComponent[]>([])
 const customContentHtml = ref<string | null>(null)
-const isProcessingEnter = ref(false) // 엔터 키 처리 중인지 여부 추적
+const isProcessingEnter = ref(false)
+
+// 데이터 상태
+const categories = ref<Category[]>([])
+const featuredProducts = ref<Product[]>([])
+const testimonials = ref<Testimonial[]>([])
+const healthStatus = ref(false)
 
 // BFF 서비스 인스턴스
 const bffService = new BffService()
 
 // 사용자 정보 상태
 const userProfile = ref<Record<string, unknown> | null>(null)
+const userId = ref<string>('')
 
-// 사용자 정보 로드
-onMounted(() => {
-  // 로컬 스토리지에서 사용자 프로필 로드
-  const storedProfile = localStorage.getItem('userProfile')
-  if (storedProfile) {
-    try {
-      userProfile.value = JSON.parse(storedProfile)
-
-      // BFF 서비스에 사용자 정보 설정
-      if (userProfile.value) {
-        bffService.setUserProfile(userProfile.value)
-      }
-    } catch (e) {
-      console.error('Failed to parse user profile from localStorage', e)
-    }
-  } else {
-    // 사용자 프로필이 없으면 온보딩으로 리다이렉션
-    router.push('/onboarding')
-  }
+// 컴포넌트 마운트 시 실행
+onMounted(async () => {
+  await loadInitialData()
 
   // 검색 입력 필드 접근성 개선
   nextTick(() => {
@@ -47,35 +45,187 @@ onMounted(() => {
   })
 })
 
+// 초기 데이터 로드
+const loadInitialData = async () => {
+  try {
+    isLoading.value = true
+
+    // 사용자 프로필 로드
+    loadUserProfile()
+
+    // Backend 연결 상태 확인
+    healthStatus.value = await bffService.healthCheck()
+
+    if (healthStatus.value) {
+      // 홈페이지 동적 UI 생성
+      await generateHomeUI()
+
+      // 기본 데이터 로드
+      await Promise.all([loadCategories(), loadFeaturedProducts(), loadTestimonials()])
+    } else {
+      // 폴백 UI 생성
+      generateFallbackUI()
+    }
+  } catch (error) {
+    console.error('홈페이지 초기 데이터 로드 실패:', error)
+    generateFallbackUI()
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 사용자 프로필 로드
+const loadUserProfile = () => {
+  const storedProfile = localStorage.getItem('userProfile')
+  if (storedProfile) {
+    try {
+      userProfile.value = JSON.parse(storedProfile)
+      bffService.setUserProfile(userProfile.value!)
+
+      // 환경 변수에서 기본 사용자 ID 가져오기 (타입 에러 수정)
+      userId.value = 'demo-user-001'
+    } catch (e) {
+      console.error('사용자 프로필 파싱 실패:', e)
+    }
+  } else {
+    // 기본 사용자 ID 설정
+    userId.value = 'demo-user-001'
+  }
+}
+
+// 홈페이지 동적 UI 생성
+const generateHomeUI = async () => {
+  try {
+    const response = await bffService.generateDynamicUI('home', userId.value)
+
+    if (response.success) {
+      uiComponents.value = response.components
+    } else {
+      console.error('홈페이지 UI 생성 실패:', response.error)
+      generateFallbackUI()
+    }
+  } catch (error) {
+    console.error('홈페이지 UI 생성 중 오류:', error)
+    generateFallbackUI()
+  }
+}
+
+// 카테고리 데이터 로드
+const loadCategories = async () => {
+  try {
+    const response = await bffService.getInsuranceCategories()
+    if (response.success) {
+      categories.value = response.data
+    }
+  } catch (error) {
+    console.error('카테고리 로드 실패:', error)
+  }
+}
+
+// 추천 상품 데이터 로드
+const loadFeaturedProducts = async () => {
+  try {
+    const response = await bffService.getInsuranceProducts(undefined, 6)
+    if (response.success) {
+      featuredProducts.value = response.data.filter((p) => p.is_popular)
+    }
+  } catch (error) {
+    console.error('추천 상품 로드 실패:', error)
+  }
+}
+
+// 고객 후기 데이터 로드
+const loadTestimonials = async () => {
+  try {
+    const response = await bffService.getCustomerTestimonials(3)
+    if (response.success) {
+      testimonials.value = response.data
+    }
+  } catch (error) {
+    console.error('고객 후기 로드 실패:', error)
+  }
+}
+
+// 폴백 UI 생성
+const generateFallbackUI = () => {
+  uiComponents.value = [
+    {
+      type: 'hero_section',
+      id: 'hero',
+      title: 'SecureLife 보험',
+      content: '믿을 수 있는 보험 파트너와 함께 안전한 미래를 준비하세요.',
+      data: {},
+      style: 'primary',
+      priority: 1,
+    },
+    {
+      type: 'notice',
+      id: 'connection_notice',
+      title: '서비스 연결 중',
+      content: '최신 정보를 불러오는 중입니다. 잠시만 기다려주세요.',
+      data: {},
+      style: 'info',
+      priority: 2,
+    },
+  ]
+}
+
 // 자연어 쿼리 처리
 const processQuery = async () => {
   if (!userQuery.value.trim()) return
 
-  // 검색 결과 페이지로 직접 이동
+  // 검색 결과 페이지로 이동
   router.push({
     path: '/search',
     query: { q: userQuery.value },
   })
 }
 
-// 엔터 키 핸들러 (한글 IME 이중 입력 방지)
+// 엔터 키 핸들러
 const handleEnterKey = (e: KeyboardEvent) => {
-  // 이미 처리 중이면 무시
   if (isProcessingEnter.value) return
-
-  // IME 조합 중인지 확인
   if (e.isComposing || e.keyCode === 229) return
 
   isProcessingEnter.value = true
-
-  // 디바운스 처리
   setTimeout(() => {
     processQuery()
     isProcessingEnter.value = false
   }, 100)
 }
 
-// 이름으로 인사
+// 컴포넌트별 렌더링 함수들 (기존 호환성 유지용)
+const renderHeroSection = (component: UIComponent) => {
+  return {
+    title: component.title,
+    content: component.content,
+    style: component.style,
+  }
+}
+
+const renderProductCard = (component: UIComponent) => {
+  return {
+    title: component.title,
+    content: component.content,
+    data: component.data,
+    style: component.style,
+  }
+}
+
+const renderButton = (component: UIComponent, path?: string) => {
+  return {
+    title: component.title,
+    content: component.content,
+    path: path || component.data.path || '#',
+    style: component.style,
+  }
+}
+
+// 컴포넌트 타입별 스타일 클래스 (기본값만)
+const getComponentClass = (component: UIComponent) => {
+  return `dynamic-component component-${component.type}`
+}
+
+// 인사말 계산
 const greeting = computed(() => {
   if (userProfile.value && typeof userProfile.value.name === 'string') {
     return `안녕하세요, ${userProfile.value.name}님!`
@@ -83,58 +233,7 @@ const greeting = computed(() => {
   return '안녕하세요!'
 })
 
-// 맞춤 보험 추천 (사용자 정보 기반)
-const recommendedProducts = computed(() => {
-  if (!userProfile.value) return []
-
-  const products = []
-
-  // 사용자 관심사에 따른 보험 추천
-  if (Array.isArray(userProfile.value.productInterests)) {
-    const interests = userProfile.value.productInterests as string[]
-
-    if (interests.includes('retirement')) {
-      products.push({
-        id: 'pension-plus',
-        name: '연금플러스보험',
-        description: '은퇴 후 안정적인 생활을 위한 맞춤형 연금보험',
-        iconClass: 'icon-retirement',
-      })
-    }
-
-    if (interests.includes('healthCare')) {
-      products.push({
-        id: 'health-care',
-        name: '건강케어보험',
-        description: '의료비 부담을 줄여주는 종합 건강보험',
-        iconClass: 'icon-health',
-      })
-    }
-
-    if (interests.includes('childEducation')) {
-      products.push({
-        id: 'child-edu',
-        name: '자녀교육보험',
-        description: '자녀의 미래를 위한 교육 자금 마련 플랜',
-        iconClass: 'icon-education',
-      })
-    }
-  }
-
-  // 기본 추천 상품 (관심사가 없을 경우)
-  if (products.length === 0) {
-    products.push({
-      id: 'life-secure',
-      name: '생활안심보험',
-      description: '일상의 다양한 위험에 대비하는 종합보험',
-      iconClass: 'icon-life',
-    })
-  }
-
-  return products
-})
-
-// 빠른 링크 섹션
+// 빠른 링크
 const quickLinks = [
   { name: '보험상품', path: '/products', icon: 'icon-product' },
   { name: '보험금 청구', path: '/claim', icon: 'icon-claim' },
@@ -149,117 +248,266 @@ const focusSearchInput = () => {
     searchInput.value.focus()
   }
 }
+
+// 상품 카드 클릭 핸들러
+const handleProductClick = (productId: string) => {
+  router.push(`/products/${productId}`)
+}
+
+// 카테고리 클릭 핸들러
+const handleCategoryClick = (categoryId: string) => {
+  router.push(`/products?category=${categoryId}`)
+}
+
+// 동적 컴포넌트 렌더링을 위한 함수들
+const getComponentTag = (type: string): string => {
+  // 백엔드에서 전송한 실제 HTML 태그를 그대로 사용
+  const htmlTags = ['section', 'header', 'nav', 'main', 'div', 'article', 'aside', 'footer']
+  return htmlTags.includes(type) ? type : 'div'
+}
+
+const parseInlineStyle = (styleString: string): Record<string, string> => {
+  // 인라인 CSS 스타일 문자열을 파싱하여 Vue 스타일 객체로 변환
+  if (!styleString || typeof styleString !== 'string') return {}
+
+  const styleObj: Record<string, string> = {}
+  const styles = styleString.split(';').filter((s) => s.trim())
+
+  styles.forEach((style) => {
+    const [property, value] = style.split(':').map((s) => s.trim())
+    if (property && value) {
+      // CSS 속성명을 camelCase로 변환
+      const camelProperty = property.replace(/-([a-z])/g, (g) => g[1].toUpperCase())
+      styleObj[camelProperty] = value
+    }
+  })
+
+  return styleObj
+}
+
+const handleDynamicClick = (component: UIComponent) => {
+  // CTA 링크나 버튼 클릭 처리
+  if (component.data?.cta_link) {
+    router.push(component.data.cta_link)
+  } else if (component.data?.link) {
+    router.push(component.data.link)
+  }
+}
+
+const handleProductNavigation = (link: string) => {
+  router.push(link)
+}
+
+const handleCategoryNavigation = (categoryName: string) => {
+  router.push(`/products?category=${categoryName}`)
+}
 </script>
 
 <template>
   <main>
     <div class="home-container">
-      <!-- 헤더 배너 -->
-      <section class="hero-banner glass-panel">
-        <div class="hero-content">
-          <h1>{{ greeting }}</h1>
-          <p v-if="userProfile">시큐어라이프와 함께 안전한 미래를 준비하세요.</p>
-          <p v-else>시큐어라이프에 오신 것을 환영합니다!</p>
+      <!-- 로딩 상태 -->
+      <div v-if="isLoading" class="loading-container">
+        <div class="loading-spinner"></div>
+        <p>최적화된 페이지를 준비하고 있습니다...</p>
+      </div>
 
-          <!-- AI 어시스턴트 검색 -->
-          <div class="search-container card-neumorphic">
-            <input
-              v-model="userQuery"
-              type="text"
-              class="search-input"
-              placeholder="궁금한 보험 상품이나 서비스를 입력해보세요..."
-              @keydown.enter.prevent="handleEnterKey"
-              ref="searchInput"
-              @click="focusSearchInput"
-            />
-            <button class="search-button" :disabled="isProcessing" @click="processQuery">
-              <span v-if="isProcessing">
-                <i class="icon-loading"></i>
-              </span>
-              <span v-else>검색</span>
-            </button>
-          </div>
+      <!-- 동적 UI 컴포넌트들 -->
+      <div v-else>
+        <!-- 헤더 배너 -->
+        <section class="hero-banner glass-panel">
+          <div class="hero-content">
+            <h1>{{ greeting }}</h1>
+            <p v-if="userProfile">시큐어라이프와 함께 안전한 미래를 준비하세요.</p>
+            <p v-else>시큐어라이프에 오신 것을 환영합니다!</p>
 
-          <!-- 응답 표시 영역 -->
-          <div v-if="response" class="response-container glass-card">
-            <p>{{ response.answer }}</p>
-            <div v-if="response.recommendedPath" class="navigate-hint">
-              <small>{{ response.recommendedPath }} 페이지로 이동합니다...</small>
+            <!-- AI 어시스턴트 검색 -->
+            <div class="search-container card-neumorphic">
+              <input
+                v-model="userQuery"
+                type="text"
+                class="search-input"
+                placeholder="궁금한 보험 상품이나 서비스를 입력해보세요..."
+                @keydown.enter.prevent="handleEnterKey"
+                ref="searchInput"
+                @click="focusSearchInput"
+              />
+              <button class="search-button" :disabled="isProcessing" @click="processQuery">
+                <span v-if="isProcessing">
+                  <i class="icon-loading"></i>
+                </span>
+                <span v-else>검색</span>
+              </button>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- 맞춤형 콘텐츠 -->
-      <section v-if="customContentHtml" class="custom-content-section glass-card">
-        <div v-html="customContentHtml"></div>
-      </section>
-
-      <!-- 빠른 링크 섹션 -->
-      <section class="quick-links-section">
-        <h2 class="section-title">빠른 링크</h2>
-        <div class="quick-links">
-          <RouterLink
-            v-for="link in quickLinks"
-            :key="link.path"
-            :to="link.path"
-            class="quick-link card-neumorphic"
+        <!-- 동적 생성된 UI 컴포넌트들 -->
+        <section class="dynamic-ui-section">
+          <component
+            v-for="component in uiComponents"
+            :key="component.id"
+            :is="getComponentTag(component.type)"
+            :class="getComponentClass(component)"
+            :style="parseInlineStyle(component.style)"
           >
-            <div :class="['link-icon', link.icon]"></div>
-            <span>{{ link.name }}</span>
-          </RouterLink>
+            <!-- 컴포넌트 제목 -->
+            <h3 v-if="component.title" class="component-title">{{ component.title }}</h3>
+
+            <!-- 컴포넌트 내용 -->
+            <div
+              v-if="component.content"
+              class="component-content"
+              v-html="component.content"
+            ></div>
+
+            <!-- 추가 데이터 렌더링 -->
+            <div v-if="component.data" class="component-data">
+              <!-- CTA 버튼 -->
+              <router-link
+                v-if="component.data.cta_text && component.data.cta_link"
+                :to="component.data.cta_link"
+                class="component-cta-button"
+              >
+                {{ component.data.cta_text }}
+              </router-link>
+
+              <!-- 통계 데이터 -->
+              <div v-if="component.data.stats" class="stats-container">
+                <div v-for="(stat, index) in component.data.stats" :key="index" class="stat-item">
+                  <span class="stat-icon">{{ stat.icon }}</span>
+                  <div class="stat-info">
+                    <div class="stat-value">{{ stat.value }}</div>
+                    <div class="stat-label">{{ stat.label }}</div>
+                    <div v-if="stat.trend" class="stat-trend">{{ stat.trend }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 상품 데이터 -->
+              <div v-if="component.data.products" class="products-container">
+                <div
+                  v-for="(product, index) in component.data.products"
+                  :key="index"
+                  class="product-item"
+                  @click="handleProductNavigation(product.link)"
+                >
+                  <h4>{{ product.name }}</h4>
+                  <div class="product-price">{{ product.price }}</div>
+                  <div class="product-coverage">{{ product.coverage }}</div>
+                  <div v-if="product.features" class="product-features">
+                    <span v-for="feature in product.features" :key="feature" class="feature-tag">
+                      {{ feature }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 카테고리 데이터 -->
+              <div v-if="component.data.categories" class="categories-container">
+                <div
+                  v-for="(category, index) in component.data.categories"
+                  :key="index"
+                  class="category-item"
+                  @click="handleCategoryNavigation(category.name)"
+                >
+                  <span class="category-icon">{{ category.icon }}</span>
+                  <div class="category-info">
+                    <div class="category-name">{{ category.name }}</div>
+                    <div class="category-count">{{ category.count }}개 상품</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </component>
+        </section>
+
+        <!-- 빠른 링크 섹션 -->
+        <section class="quick-links-section">
+          <h2 class="section-title">빠른 링크</h2>
+          <div class="quick-links-grid">
+            <router-link
+              v-for="link in quickLinks"
+              :key="link.name"
+              :to="link.path"
+              class="quick-link-card card-neumorphic"
+            >
+              <i :class="link.icon"></i>
+              <span>{{ link.name }}</span>
+            </router-link>
+          </div>
+        </section>
+
+        <!-- 보험 카테고리 섹션 (Backend 데이터) -->
+        <section v-if="categories.length > 0" class="categories-section">
+          <h2 class="section-title">보험 상품 카테고리</h2>
+          <div class="categories-grid">
+            <div
+              v-for="category in categories"
+              :key="category.id"
+              class="category-card card-neumorphic"
+              @click="handleCategoryClick(category.id)"
+            >
+              <div class="category-icon">
+                <img :src="category.icon_url" :alt="category.name" />
+              </div>
+              <h3>{{ category.name }}</h3>
+              <p>{{ category.description }}</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 인기 상품 섹션 (Backend 데이터) -->
+        <section v-if="featuredProducts.length > 0" class="featured-products-section">
+          <h2 class="section-title">인기 보험 상품</h2>
+          <div class="products-grid">
+            <div
+              v-for="product in featuredProducts"
+              :key="product.id"
+              class="product-card card-neumorphic"
+              @click="handleProductClick(product.id)"
+            >
+              <h3>{{ product.name }}</h3>
+              <p class="product-description">{{ product.description }}</p>
+              <div class="product-features">
+                <span
+                  v-for="feature in product.features?.slice(0, 2)"
+                  :key="feature"
+                  class="feature-tag"
+                >
+                  {{ feature }}
+                </span>
+              </div>
+              <div class="product-price">월 {{ product.base_price?.toLocaleString() }}원부터</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 고객 후기 섹션 (Backend 데이터) -->
+        <section v-if="testimonials.length > 0" class="testimonials-section">
+          <h2 class="section-title">고객 후기</h2>
+          <div class="testimonials-grid">
+            <div
+              v-for="testimonial in testimonials"
+              :key="testimonial.id"
+              class="testimonial-card glass-card"
+            >
+              <div class="testimonial-rating">
+                <span v-for="n in testimonial.rating" :key="n" class="star">★</span>
+              </div>
+              <h4>{{ testimonial.title }}</h4>
+              <blockquote>{{ testimonial.content }}</blockquote>
+              <cite v-if="testimonial.is_verified" class="verified">인증된 후기</cite>
+            </div>
+          </div>
+        </section>
+
+        <!-- 연결 상태 표시 -->
+        <div v-if="!healthStatus" class="connection-status">
+          <i class="icon-warning"></i>
+          <span>오프라인 모드로 실행 중입니다.</span>
         </div>
-      </section>
-
-      <!-- 맞춤 추천 상품 -->
-      <section
-        v-if="userProfile && recommendedProducts.length > 0"
-        class="recommended-products-section"
-      >
-        <h2 class="section-title">맞춤 추천 상품</h2>
-        <div class="products-grid">
-          <div
-            v-for="product in recommendedProducts"
-            :key="product.id"
-            class="product-card glass-card"
-          >
-            <div :class="['product-icon', product.iconClass]"></div>
-            <h3>{{ product.name }}</h3>
-            <p>{{ product.description }}</p>
-            <RouterLink to="/products" class="view-more">자세히 보기</RouterLink>
-          </div>
-        </div>
-      </section>
-
-      <!-- 주요 혜택 & 서비스 -->
-      <section class="benefits-section">
-        <h2 class="section-title">주요 혜택 & 서비스</h2>
-        <div class="benefits-grid">
-          <div class="benefit-card card-neumorphic">
-            <div class="benefit-icon icon-security"></div>
-            <h3>안심 보장 서비스</h3>
-            <p>업계 최고 수준의 보장 혜택을 제공합니다.</p>
-          </div>
-
-          <div class="benefit-card card-neumorphic">
-            <div class="benefit-icon icon-online"></div>
-            <h3>간편 온라인 서비스</h3>
-            <p>언제 어디서나 편리하게 이용하세요.</p>
-          </div>
-
-          <div class="benefit-card card-neumorphic">
-            <div class="benefit-icon icon-support"></div>
-            <h3>24시간 고객 지원</h3>
-            <p>언제든지 전문 상담사와 상담 가능합니다.</p>
-          </div>
-
-          <div class="benefit-card card-neumorphic">
-            <div class="benefit-icon icon-reward"></div>
-            <h3>건강 리워드</h3>
-            <p>건강한 생활습관으로 혜택을 받으세요.</p>
-          </div>
-        </div>
-      </section>
+      </div>
     </div>
   </main>
 </template>
@@ -790,6 +1038,225 @@ const focusSearchInput = () => {
   .products-grid,
   .benefits-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* 동적 UI 컴포넌트 스타일 */
+.dynamic-ui-section {
+  margin: 2rem 0;
+}
+
+.dynamic-component {
+  margin-bottom: 2rem;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.component-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.component-content {
+  line-height: 1.6;
+  color: var(--color-text-soft);
+  margin-bottom: 1.5rem;
+}
+
+.component-data {
+  margin-top: 1.5rem;
+}
+
+.component-cta-button {
+  display: inline-block;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+}
+
+.component-cta-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+}
+
+/* 통계 컨테이너 스타일 */
+.stats-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  border: 1px solid var(--color-border-soft);
+}
+
+.stat-icon {
+  font-size: 2rem;
+  margin-right: 1rem;
+}
+
+.stat-info {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: var(--color-text-soft);
+  margin-bottom: 0.25rem;
+}
+
+.stat-trend {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+/* 상품 컨테이너 스타일 */
+.products-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.product-item {
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  border: 1px solid var(--color-border-soft);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.product-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  border-color: var(--color-primary);
+}
+
+.product-item h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.75rem;
+}
+
+.product-price {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 0.5rem;
+}
+
+.product-coverage {
+  font-size: 0.875rem;
+  color: var(--color-text-soft);
+  margin-bottom: 1rem;
+}
+
+.product-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.feature-tag {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* 카테고리 컨테이너 스타일 */
+.categories-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.category-item {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  border: 1px solid var(--color-border-soft);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.category-item:hover {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+
+.category-icon {
+  font-size: 2rem;
+  margin-right: 1rem;
+}
+
+.category-info {
+  flex: 1;
+}
+
+.category-name {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.category-count {
+  font-size: 0.875rem;
+  color: var(--color-text-soft);
+}
+
+/* 다크모드 지원 */
+@media (prefers-color-scheme: dark) {
+  .dynamic-component {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .stat-item,
+  .product-item,
+  .category-item {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .component-title {
+    color: var(--color-text-dark);
+  }
+
+  .component-content {
+    color: var(--color-text-soft-dark);
   }
 }
 </style>
