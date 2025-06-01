@@ -230,7 +230,7 @@ export const useAINavigatorStore = defineStore('aiNavigator', () => {
     try {
       localStorage.setItem('searchHistory', JSON.stringify(searchHistory.value))
     } catch (e) {
-      console.error('Failed to save search history to localStorage', e)
+      // 저장 실패 시 무시
     }
   }
 
@@ -316,7 +316,6 @@ export const useAINavigatorStore = defineStore('aiNavigator', () => {
         try {
           userProfile.value = JSON.parse(storedProfile)
         } catch (e) {
-          console.error('Failed to parse user profile from localStorage', e)
           userProfile.value = null
         }
       }

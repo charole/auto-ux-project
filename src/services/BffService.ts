@@ -52,7 +52,6 @@ export class BffService {
       }
 
       const data = await response.json()
-      console.log('🤖 BFF 스마트 AI 응답:', data.ai_generated ? 'AI Agent 활성' : '일반 모드')
       return this.convertToUIResponse(data)
     } catch (error) {
       console.error('🚀 스마트 Dynamic UI 생성 실패:', error)
@@ -228,7 +227,6 @@ export class BffService {
 
   // 사용자 보험 가입 정보 조회 (미구현 - 백엔드에 엔드포인트 없음)
   public async getUserPolicies(userId: string): Promise<APIResponse<Policy[]>> {
-    console.warn('getUserPolicies: 백엔드에 해당 엔드포인트가 없습니다.')
     return {
       success: false,
       data: [],
@@ -238,7 +236,6 @@ export class BffService {
 
   // 사용자 청구 내역 조회 (미구현 - 백엔드에 엔드포인트 없음)
   public async getUserClaims(userId: string): Promise<APIResponse<Claim[]>> {
-    console.warn('getUserClaims: 백엔드에 해당 엔드포인트가 없습니다.')
     return {
       success: false,
       data: [],

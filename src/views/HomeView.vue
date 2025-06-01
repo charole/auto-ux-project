@@ -137,7 +137,7 @@ const loadFeaturedProducts = async () => {
 // 고객 후기 데이터 로드
 const loadTestimonials = async () => {
   try {
-    const response = await bffService.getCustomerTestimonials(3)
+    const response = await bffService.getCustomerTestimonials('3')
     if (response.success) {
       testimonials.value = response.data
     }

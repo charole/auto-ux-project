@@ -88,7 +88,12 @@ export default defineComponent({
         emit('generated', result)
       } catch (error) {
         console.error('UI 생성 실패:', error)
-        emit('error', error)
+        response.value = {
+          components: [],
+          total_products: 0,
+          generated_at: new Date().toISOString(),
+          ai_generated: false,
+        }
       } finally {
         loading.value = false
       }
@@ -104,21 +109,17 @@ export default defineComponent({
       generateUI()
     }
 
-    // userQuery 변경 감지
+    // userQuery 변경 감지 (초기 로딩 포함)
     watch(
       () => props.userQuery,
       (newQuery, oldQuery) => {
-        if (newQuery !== oldQuery && newQuery.trim()) {
-          console.log('User query changed:', oldQuery, '->', newQuery)
+        // 초기 로딩이거나 실제로 쿼리가 변경된 경우에만 실행
+        if (newQuery !== oldQuery || oldQuery === undefined) {
           generateUI()
         }
       },
+      { immediate: true },
     )
-
-    // 초기 로드
-    onMounted(() => {
-      generateUI()
-    })
 
     // 외부에서 호출 가능하도록 expose
     expose({

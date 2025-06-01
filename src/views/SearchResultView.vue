@@ -157,8 +157,6 @@ export default defineComponent({
     const searchWithNewQuery = () => {
       if (!newQuery.value.trim()) return
 
-      console.log('🔍 새로운 검색 시작:', newQuery.value)
-
       // 라우터를 통해 새 검색 수행 (동일 페이지 내에서 URL 파라미터만 변경)
       router
         .push({
@@ -166,9 +164,7 @@ export default defineComponent({
           query: { q: newQuery.value },
         })
         .then(() => {
-          console.log('✅ 라우터 이동 완료. 이전 query:', query.value, '새 query:', newQuery.value)
           query.value = newQuery.value
-          console.log('✅ query 값 업데이트 완료:', query.value)
         })
         .catch((error) => {
           console.error('❌ 라우터 이동 실패:', error)
@@ -255,7 +251,6 @@ export default defineComponent({
 
     // OptimizedAIResponse 이벤트 핸들러들
     const handleAIGenerated = (response: any) => {
-      console.log('AI UI 생성 완료:', response)
       // 필요한 경우 추가 처리
     }
 
@@ -265,7 +260,6 @@ export default defineComponent({
     }
 
     const handleComponentClick = (component: any) => {
-      console.log('컴포넌트 클릭:', component)
       // 컴포넌트 클릭 처리 로직
       if (component.data?.cta_link) {
         router.push(component.data.cta_link)
